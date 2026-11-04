@@ -1,0 +1,89 @@
+/* Layout: one narrow column that reads like the PM5 screen. The dart board is the hero. */
+:root {
+  --bg: #cfe0f0;
+  --panel: #bdd3e8;
+  --ink: #13203a;
+  --ink-soft: #3f5278;
+  --line: #7f98b8;
+  --hit: #17623f;
+  --miss: #9c3328;
+  --btn: #13203a;
+  --btn-ink: #cfe0f0;
+  --font-display: 'Pixelify Sans', 'Courier New', monospace;
+  --font-data: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1a15;
+    --panel: #15251d;
+    --ink: #c6f0d2;
+    --ink-soft: #86b394;
+    --line: #3b5c49;
+    --hit: #8ff0b4;
+    --miss: #ff9a88;
+    --btn: #c6f0d2;
+    --btn-ink: #0e1a15;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-data);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px;
+}
+.wrap { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--font-display); font-weight: 700; margin: 0; text-wrap: balance; }
+h1 { font-size: 36px; line-height: 1.05; }
+h2 { font-size: 26px; }
+.eyebrow { margin: 0 0 4px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.lede { margin: 8px 0 0; color: var(--ink-soft); max-width: 36ch; }
+.panel { border: 2px solid var(--ink); background: var(--panel); border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.panel[hidden] { display: none; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > * { flex: 1 1 140px; }
+.status { margin: 0; font-weight: 500; min-height: 3em; }
+.note { margin: 0; font-size: 12px; color: var(--ink-soft); }
+.btn {
+  font-family: var(--font-display); font-weight: 700; font-size: 19px;
+  min-height: 48px; padding: 10px 16px; border: 2px solid var(--ink); border-radius: 4px;
+  background: transparent; color: var(--ink); cursor: pointer;
+}
+.btn.primary { background: var(--btn); color: var(--btn-ink); }
+.btn:not(:disabled):hover { background: var(--ink); color: var(--bg); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+select { font: inherit; background: var(--bg); color: var(--ink); border: 2px solid var(--ink); border-radius: 4px; padding: 6px 8px; }
+.check { display: flex; align-items: center; gap: 8px; }
+.plan { margin: 0; padding: 12px 0 0; border-top: 2px solid var(--line); display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; font-size: 13px; }
+.plan dt { font-weight: 500; font-variant-numeric: tabular-nums; }
+.plan dd { margin: 0; color: var(--ink-soft); }
+.live { margin: 0; font-weight: 500; }
+.live strong { font-family: var(--font-display); font-size: 22px; }
+
+.hud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cell { min-width: 0; }
+.label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.value { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.phase-label { font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1.1; }
+.phase-sub { margin: 2px 0 0; color: var(--ink-soft); font-size: 13px; }
+.board-wrap { border: 2px solid var(--ink); border-radius: 4px; background: var(--bg); }
+#board { display: block; width: 100%; aspect-ratio: 1 / 1; }
+.readout { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.big { font-family: var(--font-display); font-weight: 700; font-size: 64px; line-height: 1; font-variant-numeric: tabular-nums; }
+.big small { font-size: 16px; font-weight: 500; color: var(--ink-soft); }
+.delta { font-family: var(--font-display); font-weight: 700; font-size: 22px; min-height: 1.3em; }
+.delta.hit { color: var(--hit); }
+.practice { display: flex; gap: 10px; align-items: center; }
+.practice[hidden] { display: none; }
+.practice .btn { flex: 1; }
+.practice span { flex: 2; text-align: center; font-size: 12px; color: var(--ink-soft); }
+.results-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
