@@ -39,6 +39,7 @@ Design lesson: a game for rowing should reward the thing the workout asks for. I
 - Three files: `index.html` (HTML and the app's JS), `style.css`, and `pm5.js` (all the Bluetooth code, no page code). No build step, no dependencies. It is the first example app. `index.html` loads `pm5.js` as a module, so it must be opened through a web server (localhost or GitHub Pages), not by double-clicking.
 - Connects to a PM5 with Web Bluetooth. Confirmed working: the live stroke rate in the app matched the PM5 display.
 - Practice mode: arrow keys set a fake stroke rate, so it runs with no erg.
+- `lab.html`: a test page (not part of the game) that shows every PM5 data stream live, can read heart rate straight from a chest strap or watch, draws the power curve, and records raw packets to a file. Built and tested with a pretend PM5, not yet tried on a real row.
 - Two workouts built in, named by code only: Week 1 Session 2 (W1S2, default) and Week 1 Session 1 (W1S1).
 - Fonts: JetBrains Mono for numbers and headings, IBM Plex Mono for small text. Own colors on purpose, inspired by the PM5 screen.
 - Game: Pyramid Darts. A crosshair moves up when stroke rate is too high and down when too low. A dart lands every 2 seconds.
@@ -55,12 +56,15 @@ Not verified:
 
 ## PM5 Bluetooth facts
 
-Source: Concept2 PM5 Bluetooth Smart Communication Interface Definition (public PDF on concept2.com/support/software-development).
+Source: Concept2 PM CSAFE Communication Definition, revision 0.31 (public PDF linked from concept2.com/support/software-development, 173 pages, the Bluetooth tables are around pages 14-45). `pdftoppm` is not installed here, so to read the PDF extract its text with macOS PDFKit: `osascript -l JavaScript` with a short script that loops over `PDFDocument` pages.
 
 - Device name starts with `PM5`. Wake it by pulling the handle.
 - Rowing service: `ce060030-43e5-11e4-916c-0800200c9a66`
 - Additional Status 1 characteristic: `ce060032-43e5-11e4-916c-0800200c9a66`. Stroke rate is byte 5 (strokes per minute).
 - Sample rate characteristic: `ce060034-43e5-11e4-916c-0800200c9a66`. Writing `1` asks for updates about every 500 ms.
+- Other streams (same base id, `ce0600XX-43e5-11e4-916c-0800200c9a66`): `31` General Status (time, distance), `33` Additional Status 2 (average power), `35` Stroke Data, `36` Additional Stroke Data (power per stroke), `3b` Heart Rate Belt Info. Additional Status 1 also carries heart rate (byte 6, 255 = none) and pace per 500 m (bytes 7-8, hundredths of a second). Numbers are sent low byte first. `lab.html` shows them live. Layouts match Concept2's document and the community library ergometer.js, and are not yet confirmed on a real row.
+- The force curve (the PM5's power graph) is a stream: `3d`, notify, 2 to 288 bytes split over several notifications. Each notification is a header byte (high half = pieces in this curve, low half = points in this piece), a sequence number, then up to 9 two-byte points. The oldest PM5 hardware ("PM5v1") does not send it. `createForceCurveAssembler` in `pm5.js` glues the pieces together.
+- Heart rate straight from a chest strap (standard Bluetooth heart rate service) works on a real strap in `lab.html`. Whether the PM5 passes the strap's heart rate on in byte 6 is still to be checked.
 - Other apps (like ErgData) can hold the connection. Close them first.
 - Useful libraries to read for reference: ergometer.js (JavaScript), Concept2-SDK by RowBotics (Swift), c2bluetooth (Flutter).
 
