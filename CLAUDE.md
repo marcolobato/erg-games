@@ -50,7 +50,7 @@ Verified: Bluetooth connection, live stroke rate, game runs through warm-up and 
 Not verified:
 - How the game feels while actually rowing a full session.
 - W1S2 starts at 22 spm. The source only says the steps alternate between 22 and 24.
-- W1S1 repeats 4 pyramids. The source does not give a count. 4 pyramids is about 14 minutes.
+- W1S1 repeats 4 pyramids. The source does not give a count. 4 pyramids is 13.5 minutes, or 16.5 with the 3 minute warm-up.
 - Safari, iPhone, and iPad cannot use Web Bluetooth, and that includes Chrome on iPad (every iOS/iPadOS browser runs on Apple's engine). Chrome or Edge on a laptop, or Chrome on Android, are needed. Practice mode works on iPad.
 
 ## PM5 Bluetooth facts
@@ -70,7 +70,7 @@ Each workout is a list of segments: seconds and target stroke rate. Rest and war
 
 Current built-ins:
 - W1S2: 3 min warm-up, then six 2 min steps alternating 22 and 24 spm, no rest. 15 min.
-- W1S1: 90 s at 24, 60 s at 26, 30 s at 28, then 30 s rest, repeated.
+- W1S1: 3 min warm-up, then 90 s at 24, 60 s at 26, 30 s at 28, then 30 s rest, repeated.
 
 Scoring: a dart every 2 s, starting 4 s into each step. Exact rate = 10 points, off by 1 = 5, off by 2 = 2.
 

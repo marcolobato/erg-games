@@ -101,7 +101,7 @@
   // ---- Workouts ----
   var STEPS = [[90, 24], [60, 26], [30, 28]]; // W1S1: seconds, strokes per minute
   var REST = 30, READY = 5, SETTLE = 4, GAP = 2;
-  var WARM = 180, INTERVAL = 120;             // W1S2: 3 min warm-up, six 2 min steps
+  var WARM = 180, INTERVAL = 120;             // both: 3 min warm-up. W1S2: six 2 min steps
 
   var INFO = {
     w1s2: {
@@ -116,6 +116,7 @@
     w1s1: {
       eyebrow: 'Week 1 · Session 1',
       plan: [
+        ['3 min', 'Warm up. Row easy, no darts.'],
         ['90 sec', '24 spm'], ['60 sec', '26 spm'], ['30 sec', '28 spm'],
         ['30 sec', 'Rest between pyramids'],
         ['Score', 'A dart every 2 sec. Exact rate = 10, off by 1 = 5, off by 2 = 2. Darts start 4 sec into each step.']
@@ -130,7 +131,7 @@
       for (i = 0; i < 6; i++) t.push({ kind: 'row', len: INTERVAL, spm: i % 2 === 0 ? 22 : 24, round: i + 1 });
       return t;
     }
-    t.push({ kind: 'ready', len: READY, spm: STEPS[0][1] });
+    t.push({ kind: 'warm', len: WARM });
     for (var r = 1; r <= rounds; r++) {
       STEPS.forEach(function (s) { t.push({ kind: 'row', len: s[0], spm: s[1], round: r }); });
       if (r < rounds) t.push({ kind: 'rest', len: REST, round: r });
