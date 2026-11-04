@@ -109,9 +109,13 @@ import * as pm5 from './pm5.js';
 
   // ---- Power curve ----
   // The assembler glues the pieces of one stroke together, then we draw it.
-  var curve = { points: null, count: 0, dirty: false };
+  // Values are pounds of force (lbf), the same unit as the PM5 graph.
+  // The scale is fixed, so an easy stroke stays low and a hard one draws tall.
+  // Left to right is the drive: legs first, then back and arms.
+  var scaleLbf = 200; // top of the graph, grows if a stroke goes higher
+  var curve = { points: null, previous: null, count: 0, dirty: false };
   var feedCurve = pm5.createForceCurveAssembler(function (points) {
-    curve.points = points; curve.count++; curve.dirty = true;
+    curve.previous = curve.points; curve.points = points; curve.count++; curve.dirty = true;
   });
   function drawCurve() {
     var cv = $('curve'), ctx = cv.getContext('2d');
@@ -121,18 +125,36 @@ import * as pm5 from './pm5.js';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     var cs = getComputedStyle(document.documentElement);
-    var ink = cs.getPropertyValue('--ink').trim(), line = cs.getPropertyValue('--line').trim();
-    var pts = curve.points, pad = 8, peak = Math.max.apply(null, pts.concat([1]));
-    ctx.lineWidth = 2; ctx.strokeStyle = line;
-    ctx.beginPath(); ctx.moveTo(pad, h - pad); ctx.lineTo(w - pad, h - pad); ctx.stroke();
-    ctx.strokeStyle = ink; ctx.beginPath();
-    pts.forEach(function (p, i) {
-      var x = pad + (pts.length > 1 ? i / (pts.length - 1) : 0) * (w - 2 * pad);
-      var y = h - pad - (p / peak) * (h - 2 * pad);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-    setText($('curve-info'), curve.count + ' strokes drawn. Latest: ' + pts.length + ' points, peak value ' + peak + '.');
+    var ink = cs.getPropertyValue('--ink').trim(), inkSoft = cs.getPropertyValue('--ink-soft').trim();
+    var line = cs.getPropertyValue('--line').trim();
+    var pts = curve.points, peak = Math.max.apply(null, pts.concat([0]));
+    if (peak > scaleLbf) scaleLbf = Math.ceil(peak / 50) * 50;
+    var left = 64, pad = 10, top = pad, bottom = h - pad;
+    function yFor(p) { return bottom - (p / scaleLbf) * (bottom - top); }
+
+    // grid lines every 50 lbf, with labels
+    ctx.font = "11px 'IBM Plex Mono', monospace";
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.lineWidth = 1;
+    for (var mark = 0; mark <= scaleLbf; mark += 50) {
+      ctx.strokeStyle = line;
+      ctx.beginPath(); ctx.moveTo(left, yFor(mark)); ctx.lineTo(w - pad, yFor(mark)); ctx.stroke();
+      ctx.fillStyle = inkSoft;
+      ctx.fillText(mark === scaleLbf ? mark + ' lbf' : String(mark), left - 6, yFor(mark));
+    }
+
+    function trace(points, alpha) {
+      ctx.globalAlpha = alpha; ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.beginPath();
+      points.forEach(function (p, i) {
+        var x = left + (points.length > 1 ? i / (points.length - 1) : 0) * (w - pad - left);
+        if (i === 0) ctx.moveTo(x, yFor(p)); else ctx.lineTo(x, yFor(p));
+      });
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (curve.previous) trace(curve.previous, 0.3); // the stroke before, faint
+    trace(pts, 1);
+    setText($('curve-info'), curve.count + ' strokes drawn. Latest peak: ' + peak + ' lbf (about ' +
+      Math.round(peak * 4.448) + ' N). The faint line is the stroke before.');
   }
 
   // ---- Packets ----
@@ -167,7 +189,7 @@ import * as pm5 from './pm5.js';
     setText($('m-spm'), s1 ? String(s1.strokeRate) : '–');
     setText($('m-hr-pm5'), s1 ? (s1.heartRate === null ? 'none' : String(s1.heartRate)) : '–');
     setText($('m-hr-monitor'), w ? String(w.heartRate) : '–');
-    setText($('m-dist'), g ? String(g.distanceM) : '–');
+    setText($('m-dist'), g ? String(Math.round(g.distanceM)) : '–');
     setText($('m-time'), g ? fmtTime(g.elapsedSec) : '–');
     setText($('m-power'), asd ? String(asd.strokePowerW) : '–');
     setText($('m-strokes'), sd ? String(sd.strokeCount) : '–');
