@@ -51,7 +51,7 @@ Not verified:
 - How the game feels while actually rowing a full session.
 - W1S2 starts at 22 spm. The source only says the steps alternate between 22 and 24.
 - W1S1 repeats 4 pyramids. The source does not give a count. 4 pyramids is 13.5 minutes, or 16.5 with the 3 minute warm-up.
-- Safari, iPhone, and iPad cannot use Web Bluetooth, and that includes Chrome on iPad (every iOS/iPadOS browser runs on Apple's engine). Chrome or Edge on a laptop, or Chrome on Android, are needed. Practice mode works on iPad.
+- Safari and iPhone cannot use Web Bluetooth. Chrome or Edge on a laptop, or Chrome on Android, are needed.
 
 ## PM5 Bluetooth facts
 
