@@ -153,7 +153,7 @@ import * as pm5 from './pm5.js';
     }
     if (curve.previous) trace(curve.previous, 0.3); // the stroke before, faint
     trace(pts, 1);
-    setText($('curve-info'), curve.count + ' strokes drawn. Latest peak: ' + peak + ' lbf (about ' +
+    setText($('curve-info'), curve.count + (curve.count === 1 ? ' stroke' : ' strokes') + ' drawn. Latest peak: ' + peak + ' lbf (about ' +
       Math.round(peak * 4.448) + ' N). The faint line is the stroke before.');
   }
 

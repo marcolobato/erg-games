@@ -164,10 +164,13 @@ export function decodePacket(name, v) {
 // curve has arrived, onCurve(points) is called with an array of numbers.
 // (The oldest PM5 hardware, "PM5v1", does not send this stream.)
 export function createForceCurveAssembler(onCurve) {
-  var points = [], pieces = 0, lastSeq = -1;
+  var points = [], pieces = 0, lastSeq = -1, lastBytes = '';
   return function (v) {
     if (v.byteLength < 2) return;
+    var bytes = Array.prototype.join.call(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), ',');
     var total = u8(v, 0) >> 4, count = u8(v, 0) & 15, seq = u8(v, 1);
+    if (seq === lastSeq && bytes === lastBytes) return; // the exact same piece twice, skip it
+    lastBytes = bytes;
     if (seq <= lastSeq) { points = []; pieces = 0; } // a new stroke started, drop any unfinished one
     for (var i = 0; i < count && 2 + i * 2 + 1 < v.byteLength; i++) points.push(u16(v, 2 + i * 2));
     pieces++;
@@ -182,6 +185,18 @@ export function createForceCurveAssembler(onCurve) {
 
 function packetListener(name, handlers) {
   return function (ev) { handlers.onPacket(name, ev.target.value); };
+}
+
+// Remember what we listen to, so connecting again (a second click, or a
+// reconnect after a drop) replaces the old listener instead of adding a
+// second one. Two listeners would deliver every packet twice.
+var subscriptions = {};
+function listen(ch, name, handlers) {
+  var old = subscriptions[name];
+  if (old) old.ch.removeEventListener('characteristicvaluechanged', old.fn);
+  var fn = packetListener(name, handlers);
+  ch.addEventListener('characteristicvaluechanged', fn);
+  subscriptions[name] = { ch: ch, fn: fn };
 }
 
 // Like connect(), but listens to every stream in STREAMS and hands each raw
@@ -205,7 +220,7 @@ export async function connectLab(handlers) {
   for (var i = 0; i < STREAMS.length; i++) {
     try {
       var ch = await svc.getCharacteristic(STREAMS[i].uuid);
-      ch.addEventListener('characteristicvaluechanged', packetListener(STREAMS[i].name, handlers));
+      listen(ch, STREAMS[i].name, handlers);
       await ch.startNotifications();
     } catch (e) { failed.push(STREAMS[i].name); }
   }
@@ -223,7 +238,7 @@ export async function connectHeartRate(handlers) {
   var server = await dev.gatt.connect();
   var svc = await server.getPrimaryService('heart_rate');
   var ch = await svc.getCharacteristic('heart_rate_measurement');
-  ch.addEventListener('characteristicvaluechanged', packetListener(HEART_MONITOR, handlers));
+  listen(ch, HEART_MONITOR, handlers);
   await ch.startNotifications();
   return { name: dev.name || 'Heart rate monitor' };
 }
