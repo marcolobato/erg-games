@@ -9,7 +9,7 @@
   --miss: #9c3328;
   --btn: #13203a;
   --btn-ink: #cfe0f0;
-  --font-display: 'Pixelify Sans', 'Courier New', monospace;
+  --font-display: 'JetBrains Mono', ui-monospace, 'Courier New', monospace;
   --font-data: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   color-scheme: light;
 }
