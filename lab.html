@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PM5 Data Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+/* Lab-only styles. The main look comes from style.css. */
+.wrap { max-width: 720px; }
+a { color: var(--ink); }
+.metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 8px; }
+.src { font-size: 11px; color: var(--ink-soft); }
+.stream { border-top: 2px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.stream-head { font-weight: 500; }
+.raw { font-size: 12px; color: var(--ink-soft); word-break: break-all; }
+.fields { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; font-size: 13px; }
+.fields dt { color: var(--ink-soft); }
+.fields dd { margin: 0; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <p class="eyebrow">Test page · not part of the game</p>
+    <h1>PM5 data explorer</h1>
+    <p class="lede">Connect, row, and see what the erg sends. <a href="./">Back to the game</a></p>
+  </header>
+
+  <!-- CONNECT -->
+  <section class="panel">
+    <p id="status" class="status">Connect your PM5. To test heart rate straight from a chest strap, watch, or other heart rate monitor, connect that too.</p>
+    <div class="row">
+      <button id="btn-connect" class="btn" type="button">Connect PM5</button>
+      <button id="btn-hr" class="btn" type="button">Connect heart rate monitor</button>
+    </div>
+    <p id="support" class="note" hidden>Bluetooth needs Chrome or Edge on a laptop, or Chrome on Android. Safari and iPhone can't connect.</p>
+    <p class="note">Close other apps that use the PM5 first, like ErgData. A chest strap works as is. A watch must be broadcasting heart rate over Bluetooth. Straps often allow only one or two connections, so to test the PM5's own heart rate first, leave the heart rate monitor button alone.</p>
+  </section>
+
+  <!-- KEY METRICS -->
+  <section class="panel">
+    <h2>Key metrics</h2>
+    <div class="metrics">
+      <div class="cell"><div class="label">Pace /500 m</div><div class="value" id="m-pace">–</div><div class="src">Additional Status 1</div></div>
+      <div class="cell"><div class="label">Stroke rate</div><div class="value" id="m-spm">–</div><div class="src">Additional Status 1</div></div>
+      <div class="cell"><div class="label">Heart rate (PM5)</div><div class="value" id="m-hr-pm5">–</div><div class="src">Additional Status 1, "none" if no belt is paired</div></div>
+      <div class="cell"><div class="label">Heart rate (monitor)</div><div class="value" id="m-hr-monitor">–</div><div class="src">Direct from your chest strap, watch, or monitor</div></div>
+      <div class="cell"><div class="label">Distance (m)</div><div class="value" id="m-dist">–</div><div class="src">General Status</div></div>
+      <div class="cell"><div class="label">Time</div><div class="value" id="m-time">–</div><div class="src">General Status</div></div>
+      <div class="cell"><div class="label">Stroke power (W)</div><div class="value" id="m-power">–</div><div class="src">Additional Stroke Data</div></div>
+      <div class="cell"><div class="label">Stroke count</div><div class="value" id="m-strokes">–</div><div class="src">Stroke Data</div></div>
+    </div>
+  </section>
+
+  <!-- POWER CURVE -->
+  <section class="panel">
+    <h2>Power curve</h2>
+    <p id="curve-info" class="note">Waiting for the first stroke. The PM5 sends the shape of each pull as a stream of points, and this graph draws the latest stroke from them.</p>
+    <canvas id="curve" role="img" aria-label="Graph of how hard you pulled during the last stroke" style="display: block; width: 100%; height: 180px;"></canvas>
+    <p class="note">Units: pounds of force (lbf), the same as the "lbf" label on your PM5's graph. Your PM5 can also show newtons ("N"): 1 lbf is about 4.45 N. Left to right is one drive: legs first, then the body swing, then the arms. The PM5 only sends the curve after each drive, so it appears just after you finish the stroke and grows as it arrives. The faint line is your last full stroke.</p>
+  </section>
+
+  <!-- RECORD -->
+  <section class="panel">
+    <h2>Record</h2>
+    <p id="rec-status" class="status">Not recording. Recording saves every packet to a file you can keep.</p>
+    <button id="btn-rec" class="btn primary" type="button">Start recording</button>
+  </section>
+
+  <!-- STREAMS -->
+  <section class="panel">
+    <h2>Streams</h2>
+    <p class="note">Each stream shows how often it updates and the raw bytes next to the decoded numbers. A stream that stays on "no packets yet" is a result too.</p>
+    <div id="streams" style="display: flex; flex-direction: column; gap: 14px;"></div>
+  </section>
+</main>
+
+<script type="module">
+import * as pm5 from './pm5.js';
+
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  // Every stream we expect: the PM5 ones, plus the heart rate monitor.
+  var NAMES = pm5.STREAMS.map(function (s) { return s.name; }).concat(['Heart Rate Monitor']);
+  var streams = {};     // name -> { count, first, last, hex, fields }
+  var views = {};       // name -> { head, raw, fields, rows } (the page elements)
+  var recording = null; // null, or { start, startedAt, packets }
+  var pmName = '';
+
+  // ---- Helpers ----
+  function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
+  function status(msg) { $('status').textContent = msg; }
+  function hex(v) {
+    var out = [];
+    for (var i = 0; i < v.byteLength; i++) out.push((v.getUint8(i) < 16 ? '0' : '') + v.getUint8(i).toString(16));
+    return out.join(' ').toUpperCase();
+  }
+  function fmtTime(sec) {
+    var t = Math.floor(sec), m = Math.floor(t / 60), s = t % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function pace(sec) { return sec > 0 ? fmtTime(Math.round(sec)) : '–'; }
+  function latest(name) { return streams[name] && streams[name].fields; }
+
+  // ---- Power curve ----
+  // The assembler glues the pieces of one stroke together, then we draw it.
+  // Values are pounds of force (lbf), the same unit as the PM5 graph.
+  // The scale is fixed, so an easy stroke stays low and a hard one draws tall.
+  // Left to right is the drive: legs first, then back and arms.
+  var scaleLbf = 200; // top of the graph, grows if a stroke goes higher
+  // The curve is drawn right away on every piece (no waiting for the next
+  // screen refresh), so it starts growing about 0.1 s after the drive ends.
+  var curve = { points: null, previous: null, live: null, expected: 0, count: 0 };
+  var feedCurve = pm5.createForceCurveAssembler(function (points) {
+    curve.previous = curve.points; curve.points = points; curve.live = null; curve.count++;
+    drawCurve();
+  }, function (soFar, expected) {
+    curve.live = soFar; curve.expected = expected;
+    drawCurve();
+  });
+  function drawCurve() {
+    var cv = $('curve'), ctx = cv.getContext('2d');
+    var box = cv.getBoundingClientRect(), w = Math.round(box.width), h = Math.round(box.height);
+    var dpr = window.devicePixelRatio || 1;
+    if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    var cs = getComputedStyle(document.documentElement);
+    var ink = cs.getPropertyValue('--ink').trim(), inkSoft = cs.getPropertyValue('--ink-soft').trim();
+    var line = cs.getPropertyValue('--line').trim();
+    // while a stroke is arriving, draw it over the last full stroke
+    var pts = curve.live || curve.points, faint = curve.live ? curve.points : curve.previous;
+    if (!pts) return;
+    var peak = Math.max.apply(null, pts.concat([0]));
+    if (peak > scaleLbf) scaleLbf = Math.ceil(peak / 50) * 50;
+    var left = 64, pad = 10, top = pad, bottom = h - pad;
+    function yFor(p) { return bottom - (p / scaleLbf) * (bottom - top); }
+
+    // grid lines every 50 lbf, with labels
+    ctx.font = "11px 'IBM Plex Mono', monospace";
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.lineWidth = 1;
+    for (var mark = 0; mark <= scaleLbf; mark += 50) {
+      ctx.strokeStyle = line;
+      ctx.beginPath(); ctx.moveTo(left, yFor(mark)); ctx.lineTo(w - pad, yFor(mark)); ctx.stroke();
+      ctx.fillStyle = inkSoft;
+      ctx.fillText(mark === scaleLbf ? mark + ' lbf' : String(mark), left - 6, yFor(mark));
+    }
+
+    // span = how many points fill the width; a growing stroke uses its expected length
+    function trace(points, alpha, span) {
+      ctx.globalAlpha = alpha; ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.beginPath();
+      points.forEach(function (p, i) {
+        var x = left + (span > 0 ? Math.min(i / span, 1) : 0) * (w - pad - left);
+        if (i === 0) ctx.moveTo(x, yFor(p)); else ctx.lineTo(x, yFor(p));
+      });
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (faint) trace(faint, 0.3, faint.length - 1); // your last full stroke
+    trace(pts, 1, curve.live ? Math.max(curve.expected - 1, pts.length - 1) : pts.length - 1);
+    setText($('curve-info'), curve.live
+      ? 'Stroke ' + (curve.count + 1) + ' arriving…'
+      : curve.count + (curve.count === 1 ? ' stroke' : ' strokes') + ' drawn. Latest peak: ' + peak + ' lbf (about ' +
+        Math.round(peak * 4.448) + ' N).');
+  }
+
+  // ---- Packets ----
+  function onPacket(name, v) {
+    var now = performance.now();
+    var s = streams[name] || (streams[name] = { count: 0, first: now, last: now });
+    s.count++; s.last = now;
+    s.hex = hex(v);
+    s.fields = pm5.decodePacket(name, v);
+    if (name === 'Force Curve') feedCurve(v);
+    if (recording) recording.packets.push({ ms: Math.round(now - recording.start), stream: name, hex: s.hex });
+  }
+
+  // ---- Page: one block per stream, built once ----
+  var holder = $('streams');
+  NAMES.forEach(function (name) {
+    var box = document.createElement('div'); box.className = 'stream';
+    var head = document.createElement('div'); head.className = 'stream-head';
+    var raw = document.createElement('div'); raw.className = 'raw';
+    var fields = document.createElement('dl'); fields.className = 'fields';
+    box.appendChild(head); box.appendChild(raw); box.appendChild(fields);
+    holder.appendChild(box);
+    views[name] = { head: head, raw: raw, fields: fields, rows: null };
+    setText(head, name + ' · no packets yet');
+  });
+
+  function render() {
+    // Key metrics
+    var s1 = latest('Additional Status 1'), g = latest('General Status');
+    var sd = latest('Stroke Data'), asd = latest('Additional Stroke Data'), w = latest('Heart Rate Monitor');
+    setText($('m-pace'), s1 ? pace(s1.paceSecPer500) : '–');
+    setText($('m-spm'), s1 ? String(s1.strokeRate) : '–');
+    setText($('m-hr-pm5'), s1 ? (s1.heartRate === null ? 'none' : String(s1.heartRate)) : '–');
+    setText($('m-hr-monitor'), w ? String(w.heartRate) : '–');
+    setText($('m-dist'), g ? String(Math.round(g.distanceM)) : '–');
+    setText($('m-time'), g ? fmtTime(g.elapsedSec) : '–');
+    setText($('m-power'), asd ? String(asd.strokePowerW) : '–');
+    setText($('m-strokes'), sd ? String(sd.strokeCount) : '–');
+
+    // Streams
+    NAMES.forEach(function (name) {
+      var s = streams[name], view = views[name];
+      if (!s) return;
+      var secs = (s.last - s.first) / 1000;
+      var rate = s.count > 1 && secs > 0 ? (s.count - 1) / secs : 0;
+      setText(view.head, name + ' · ' + (rate ? rate.toFixed(1) + ' per second · ' : '') + s.count + (s.count === 1 ? ' packet' : ' packets'));
+      setText(view.raw, s.hex);
+      if (s.fields) {
+        if (!view.rows) {
+          view.rows = {};
+          Object.keys(s.fields).forEach(function (k) {
+            var dt = document.createElement('dt'), dd = document.createElement('dd');
+            dt.textContent = k;
+            view.fields.appendChild(dt); view.fields.appendChild(dd);
+            view.rows[k] = dd;
+          });
+        }
+        Object.keys(s.fields).forEach(function (k) {
+          setText(view.rows[k], s.fields[k] === null ? 'none' : String(s.fields[k]));
+        });
+      }
+    });
+
+    // Recording
+    setText($('rec-status'), recording
+      ? 'Recording: ' + recording.packets.length + ' packets so far.'
+      : 'Not recording. Recording saves every packet to a file you can keep.');
+  }
+  setInterval(render, 250);
+
+  // ---- Connect ----
+  function failMessage(e, what) {
+    if (e && e.name === 'NotFoundError') return 'No ' + what + ' picked. Press the button to try again.';
+    return 'Could not connect: ' + (e && e.message ? e.message : e);
+  }
+
+  $('btn-connect').addEventListener('click', async function () {
+    status('Pick your PM5 from the list. Wake it up first by pulling the handle.');
+    try {
+      var r = await pm5.connectLab({
+        onPacket: onPacket,
+        onDisconnect: function () { status('PM5 disconnected. Press Connect PM5 to try again.'); }
+      });
+      pmName = r.name;
+      status('Connected to ' + r.name + '. ' + (r.failed.length
+        ? 'These streams could not start: ' + r.failed.join(', ') + '.'
+        : 'Pull the handle and watch the numbers.'));
+    } catch (e) { status(failMessage(e, 'PM5') + ' If another app is connected to the PM5, close it and try again.'); }
+  });
+
+  $('btn-hr').addEventListener('click', async function () {
+    status('Pick your heart rate monitor (chest strap or watch) from the list. A watch must be broadcasting heart rate.');
+    try {
+      var r = await pm5.connectHeartRate({
+        onPacket: onPacket,
+        onDisconnect: function () { status('Heart rate monitor disconnected.'); }
+      });
+      status('Heart rate connected to ' + r.name + '.');
+    } catch (e) { status(failMessage(e, 'heart rate monitor')); }
+  });
+
+  if (!pm5.isSupported()) {
+    $('support').hidden = false;
+    $('btn-connect').disabled = true;
+    $('btn-hr').disabled = true;
+  }
+
+  // ---- Record ----
+  function save() {
+    var data = {
+      format: 'erg-games-pm5-recording', version: 1,
+      startedAt: recording.startedAt, device: pmName, packets: recording.packets
+    };
+    var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pm5-recording-' + recording.startedAt.replace(/[:.]/g, '-').slice(0, 19) + '.json';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  $('btn-rec').addEventListener('click', function () {
+    if (!recording) {
+      recording = { start: performance.now(), startedAt: new Date().toISOString(), packets: [] };
+      $('btn-rec').textContent = 'Stop and save';
+    } else {
+      save();
+      recording = null;
+      $('btn-rec').textContent = 'Start recording';
+    }
+  });
+})();
+</script>
+</body>
+</html>
