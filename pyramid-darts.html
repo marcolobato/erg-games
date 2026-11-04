@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pyramid Darts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Pixelify+Sans:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one narrow column that reads like the PM5 screen. The dart board is the hero. */
+:root {
+  --bg: #cfe0f0;
+  --panel: #bdd3e8;
+  --ink: #13203a;
+  --ink-soft: #3f5278;
+  --line: #7f98b8;
+  --hit: #17623f;
+  --miss: #9c3328;
+  --btn: #13203a;
+  --btn-ink: #cfe0f0;
+  --font-display: 'Pixelify Sans', 'Courier New', monospace;
+  --font-data: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1a15;
+    --panel: #15251d;
+    --ink: #c6f0d2;
+    --ink-soft: #86b394;
+    --line: #3b5c49;
+    --hit: #8ff0b4;
+    --miss: #ff9a88;
+    --btn: #c6f0d2;
+    --btn-ink: #0e1a15;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-data);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px;
+}
+.wrap { max-width: 440px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--font-display); font-weight: 700; margin: 0; text-wrap: balance; }
+h1 { font-size: 36px; line-height: 1.05; }
+h2 { font-size: 26px; }
+.eyebrow { margin: 0 0 4px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.lede { margin: 8px 0 0; color: var(--ink-soft); max-width: 36ch; }
+.panel { border: 2px solid var(--ink); background: var(--panel); border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.panel[hidden] { display: none; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > * { flex: 1 1 140px; }
+.status { margin: 0; font-weight: 500; min-height: 3em; }
+.note { margin: 0; font-size: 12px; color: var(--ink-soft); }
+.btn {
+  font-family: var(--font-display); font-weight: 700; font-size: 19px;
+  min-height: 48px; padding: 10px 16px; border: 2px solid var(--ink); border-radius: 4px;
+  background: transparent; color: var(--ink); cursor: pointer;
+}
+.btn.primary { background: var(--btn); color: var(--btn-ink); }
+.btn:not(:disabled):hover { background: var(--ink); color: var(--bg); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+select { font: inherit; background: var(--bg); color: var(--ink); border: 2px solid var(--ink); border-radius: 4px; padding: 6px 8px; }
+.check { display: flex; align-items: center; gap: 8px; }
+.plan { margin: 0; padding: 12px 0 0; border-top: 2px solid var(--line); display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; font-size: 13px; }
+.plan dt { font-weight: 500; font-variant-numeric: tabular-nums; }
+.plan dd { margin: 0; color: var(--ink-soft); }
+.live { margin: 0; font-weight: 500; }
+.live strong { font-family: var(--font-display); font-size: 22px; }
+
+.hud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cell { min-width: 0; }
+.label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+.value { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.phase-label { font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1.1; }
+.phase-sub { margin: 2px 0 0; color: var(--ink-soft); font-size: 13px; }
+.board-wrap { border: 2px solid var(--ink); border-radius: 4px; background: var(--bg); }
+#board { display: block; width: 100%; aspect-ratio: 1 / 1; }
+.readout { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.big { font-family: var(--font-display); font-weight: 700; font-size: 64px; line-height: 1; font-variant-numeric: tabular-nums; }
+.big small { font-size: 16px; font-weight: 500; color: var(--ink-soft); }
+.delta { font-family: var(--font-display); font-weight: 700; font-size: 22px; min-height: 1.3em; }
+.delta.hit { color: var(--hit); }
+.practice { display: flex; gap: 10px; align-items: center; }
+.practice[hidden] { display: none; }
+.practice .btn { flex: 1; }
+.practice span { flex: 2; text-align: center; font-size: 12px; color: var(--ink-soft); }
+.results-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <p class="eyebrow" id="eyebrow">Week 1 · Session 2</p>
+    <h1>Pyramid Darts</h1>
+    <p class="lede">Hold each stroke rate and your darts land on the bull.</p>
+  </header>
+
+  <!-- SETUP -->
+  <section id="setup" class="panel">
+    <p id="status" class="status">Connect your PM5, or try practice mode.</p>
+    <div class="row">
+      <button id="btn-connect" class="btn" type="button">Connect PM5</button>
+      <button id="btn-practice" class="btn" type="button">Practice mode</button>
+    </div>
+    <p id="support" class="note" hidden>Bluetooth needs Chrome or Edge on a laptop, or Chrome on Android. Safari and iPhone can't connect. Practice mode works in any browser.</p>
+    <p class="note">Close other apps that use the PM5 first, like ErgData.</p>
+    <p id="live" class="live" hidden>Live stroke rate: <strong id="live-n">0</strong> spm</p>
+    <div class="fields">
+      <label for="workout">Workout</label>
+      <select id="workout">
+        <option value="w1s2" selected>Week 1 · Session 2</option>
+        <option value="w1s1">Week 1 · Session 1</option>
+      </select>
+      <span id="rounds-field" hidden>
+        <label for="rounds">Pyramids</label>
+        <select id="rounds">
+          <option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
+        </select>
+      </span>
+      <label class="check" for="sound"><input type="checkbox" id="sound" checked> Sound</label>
+    </div>
+    <button id="btn-start" class="btn primary" type="button" disabled>Start workout</button>
+    <dl class="plan" id="plan"></dl>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="panel" hidden>
+    <div class="hud">
+      <div class="cell"><div class="label">Score</div><div class="value" id="h-score">0</div></div>
+      <div class="cell"><div class="label">Step left</div><div class="value" id="h-time">0:00</div></div>
+      <div class="cell"><div class="label" id="h-round-label">Interval</div><div class="value" id="h-round">–</div></div>
+    </div>
+    <div>
+      <div class="phase-label" id="phase-label">GET READY</div>
+      <p class="phase-sub" id="phase-sub"></p>
+    </div>
+    <div class="board-wrap"><canvas id="board" role="img" aria-label="Dart board. Your stroke rate moves the crosshair up when you are too fast and down when you are too slow."></canvas></div>
+    <div class="readout">
+      <div><div class="label">Target</div><div class="big"><span id="r-target">–</span> <small>spm</small></div></div>
+      <div><div class="label">You</div><div class="big"><span id="r-you">0</span> <small>spm</small></div></div>
+    </div>
+    <div class="delta" id="delta" aria-live="polite"></div>
+    <div class="practice" id="practice" hidden>
+      <button class="btn" id="btn-down" type="button" aria-label="Lower stroke rate">−</button>
+      <span>Practice: use the arrow keys or these buttons to set your rate.</span>
+      <button class="btn" id="btn-up" type="button" aria-label="Raise stroke rate">+</button>
+    </div>
+    <p class="note" id="link"></p>
+    <div class="row">
+      <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
+      <button id="btn-end" class="btn" type="button">End workout</button>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="results" class="panel" hidden>
+    <h2>Workout done</h2>
+    <div class="hud">
+      <div class="cell"><div class="label">Score</div><div class="value" id="f-score">0</div></div>
+      <div class="cell"><div class="label">On target</div><div class="value" id="f-pct">0%</div></div>
+      <div class="cell"><div class="label">Bulls</div><div class="value" id="f-bulls">0</div></div>
+    </div>
+    <ul class="results-list" id="f-by"></ul>
+    <p class="note">On target means within 1 stroke per minute of the goal.</p>
+    <button id="btn-again" class="btn primary" type="button">Row again</button>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---- Concept2 PM5 Bluetooth ids (rowing service) ----
+  var SVC = 'ce060030-43e5-11e4-916c-0800200c9a66';
+  var CH_ADD1 = 'ce060032-43e5-11e4-916c-0800200c9a66';   // additional status 1: stroke rate is byte 5
+  var CH_SAMPLE = 'ce060034-43e5-11e4-916c-0800200c9a66'; // how often status is sent
+
+  // ---- Workouts ----
+  var STEPS = [[90, 24], [60, 26], [30, 28]]; // W1S1: seconds, strokes per minute
+  var REST = 30, READY = 5, SETTLE = 4, GAP = 2;
+  var WARM = 180, INTERVAL = 120;             // W1S2: 3 min warm-up, six 2 min steps
+
+  var INFO = {
+    w1s2: {
+      eyebrow: 'Week 1 · Session 2',
+      plan: [
+        ['3 min', 'Warm up. Row easy, no darts.'],
+        ['2 min', '22 spm'], ['2 min', '24 spm'],
+        ['', 'Six steps in a row, starting at 22 and alternating. No rest. 15 min total.'],
+        ['Score', 'A dart every 2 sec. Exact rate = 10, off by 1 = 5, off by 2 = 2. Darts start 4 sec into each step.']
+      ]
+    },
+    w1s1: {
+      eyebrow: 'Week 1 · Session 1',
+      plan: [
+        ['90 sec', '24 spm'], ['60 sec', '26 spm'], ['30 sec', '28 spm'],
+        ['30 sec', 'Rest between pyramids'],
+        ['Score', 'A dart every 2 sec. Exact rate = 10, off by 1 = 5, off by 2 = 2. Darts start 4 sec into each step.']
+      ]
+    }
+  };
+
+  function buildTimeline(key, rounds) {
+    var t = [], i;
+    if (key === 'w1s2') {
+      t.push({ kind: 'warm', len: WARM });
+      for (i = 0; i < 6; i++) t.push({ kind: 'row', len: INTERVAL, spm: i % 2 === 0 ? 22 : 24, round: i + 1 });
+      return t;
+    }
+    t.push({ kind: 'ready', len: READY, spm: STEPS[0][1] });
+    for (var r = 1; r <= rounds; r++) {
+      STEPS.forEach(function (s) { t.push({ kind: 'row', len: s[0], spm: s[1], round: r }); });
+      if (r < rounds) t.push({ kind: 'rest', len: REST, round: r });
+    }
+    return t;
+  }
+
+  // ---- State ----
+  var mode = null;          // 'pm5' or 'practice'
+  var spm = 0;              // current stroke rate
+  var practiceSpm = 20;
+  var running = false, rafId = 0, t0 = 0, total = 0;
+  var timeline = [], rounds = 4, roundsTotal = 6, wkey = 'w1s2', lastPhase = -1, lastSec = -1;
+  var darts = [], popups = [], aimErr = 0, stats = null;
+  var audio = null, wake = null, pmName = '';
+
+  // ---- Helpers ----
+  function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
+  function fmt(sec) { var m = Math.floor(sec / 60), s = sec % 60; return m + ':' + (s < 10 ? '0' : '') + s; }
+  function show(id) { ['setup', 'game', 'results'].forEach(function (k) { $(k).hidden = (k !== id); }); }
+  function status(msg) { $('status').textContent = msg; }
+
+  // ---- Sound ----
+  function beep(freq, dur, vol) {
+    if (!audio || !$('sound').checked) return;
+    dur = dur || 0.12; vol = vol || 0.15;
+    var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime;
+    o.type = 'square'; o.frequency.value = freq;
+    o.connect(g); g.connect(audio.destination);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  var NOTE = { 22: 466, 24: 523, 26: 587, 28: 659 };
+
+  // ---- PM5 connection ----
+  function onDrop() {
+    if (mode === 'pm5') {
+      spm = 0;
+      setText($('link'), 'PM5 connection lost. Reconnect from the start screen.');
+      status('PM5 disconnected. Press Connect PM5 to try again.');
+      $('btn-start').disabled = true;
+      $('live').hidden = true;
+      mode = null;
+    }
+  }
+
+  async function connectPM5() {
+    status('Pick your PM5 from the list. Wake it up first by pulling the handle.');
+    var dev = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'PM5' }],
+      optionalServices: [SVC]
+    });
+    dev.addEventListener('gattserverdisconnected', onDrop);
+    var server = await dev.gatt.connect();
+    var svc = await server.getPrimaryService(SVC);
+    try {
+      var sr = await svc.getCharacteristic(CH_SAMPLE);
+      await sr.writeValue(new Uint8Array([1])); // ask for updates about twice a second
+    } catch (e) { /* default rate still works */ }
+    var ch = await svc.getCharacteristic(CH_ADD1);
+    ch.addEventListener('characteristicvaluechanged', function (ev) {
+      var v = ev.target.value;
+      if (v.byteLength > 5) {
+        spm = v.getUint8(5);
+        setText($('live-n'), String(spm));
+      }
+    });
+    await ch.startNotifications();
+    pmName = dev.name || 'PM5';
+    mode = 'pm5';
+    spm = 0;
+    status('Connected to ' + pmName + '. Pull the handle and check the live rate below.');
+    $('live').hidden = false;
+    $('btn-start').disabled = false;
+  }
+
+  $('btn-connect').addEventListener('click', async function () {
+    try { await connectPM5(); }
+    catch (e) {
+      if (e && e.name === 'NotFoundError') status('No PM5 picked. Press Connect PM5 to try again.');
+      else status('Could not connect: ' + (e && e.message ? e.message : e) + ' If another app is connected to the PM5, close it and try again.');
+    }
+  });
+
+  $('btn-practice').addEventListener('click', function () {
+    mode = 'practice';
+    practiceSpm = 20; spm = practiceSpm;
+    $('live').hidden = true;
+    status('Practice mode. You set your own rate with the arrow keys.');
+    $('btn-start').disabled = false;
+  });
+
+  if (!navigator.bluetooth) {
+    $('support').hidden = false;
+    $('btn-connect').disabled = true;
+  }
+
+  // ---- Practice controls ----
+  function nudge(d) {
+    if (mode !== 'practice') return;
+    practiceSpm = Math.max(0, Math.min(50, practiceSpm + d));
+    spm = practiceSpm;
+  }
+  $('btn-up').addEventListener('click', function () { nudge(1); });
+  $('btn-down').addEventListener('click', function () { nudge(-1); });
+  document.addEventListener('keydown', function (e) {
+    if (!running) return;
+    if (e.key === 'ArrowUp') { e.preventDefault(); nudge(1); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); nudge(-1); }
+  });
+
+  // ---- Canvas ----
+  var cv = $('board'), ctx = cv.getContext('2d'), size = 0;
+  var C = {};
+  function readColors() {
+    var cs = getComputedStyle(document.documentElement);
+    ['bg', 'panel', 'ink', 'ink-soft', 'line', 'hit', 'miss'].forEach(function (k) { C[k] = cs.getPropertyValue('--' + k).trim(); });
+  }
+  readColors();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+  function fit() {
+    var s = Math.round(cv.getBoundingClientRect().width);
+    if (!s || s === size) return;
+    size = s;
+    var dpr = window.devicePixelRatio || 1;
+    cv.width = s * dpr; cv.height = s * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  new ResizeObserver(fit).observe(cv);
+  var EASE = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 0.25;
+
+  function draw(p, now, inPhase) {
+    fit();
+    var s = size; if (!s) return;
+    ctx.clearRect(0, 0, s, s);
+    var cx = s / 2, cy = s / 2, R = (s / 2) * 0.84, u = R / 3.5;
+    var resting = p.kind === 'rest' || p.kind === 'warm';
+
+    // rings: 3.5 / 2.5 / 1.5 / 0.5 spm from the goal
+    ctx.globalAlpha = resting ? 0.3 : 1;
+    ctx.lineWidth = 2; ctx.strokeStyle = C.ink;
+    [3.5, 2.5, 1.5, 0.5].forEach(function (r) { ctx.beginPath(); ctx.arc(cx, cy, r * u, 0, Math.PI * 2); ctx.stroke(); });
+    ctx.fillStyle = C.ink; ctx.globalAlpha = resting ? 0.08 : 0.18;
+    ctx.beginPath(); ctx.arc(cx, cy, 0.5 * u, 0, Math.PI * 2); ctx.fill();
+
+    // labels
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = C['ink-soft'];
+    ctx.font = "500 11px 'IBM Plex Mono', monospace";
+    ctx.textAlign = 'center';
+    ctx.fillText('▲ TOO FAST', cx, 16);
+    ctx.fillText('▼ TOO SLOW', cx, s - 8);
+    ctx.fillText('5', cx + 1.0 * u, cy + 4);
+    ctx.fillText('2', cx + 2.0 * u, cy + 4);
+
+    if (resting) {
+      ctx.fillStyle = C.ink;
+      ctx.font = "700 34px 'Pixelify Sans', monospace";
+      if (p.kind === 'warm') {
+        ctx.fillText('WARM UP', cx, cy - 14);
+        ctx.font = "700 30px 'Pixelify Sans', monospace";
+        ctx.fillText(spm + ' spm', cx, cy + 24);
+        ctx.fillStyle = C['ink-soft'];
+        ctx.font = "500 12px 'IBM Plex Mono', monospace";
+        ctx.fillText('darts start in ' + fmt(Math.ceil(p.len - inPhase)), cx, cy + 50);
+      } else {
+        ctx.fillText('REST', cx, cy + 12);
+      }
+      return;
+    }
+
+    // stuck darts (newest last), older ones fade
+    var recent = darts.slice(-14);
+    recent.forEach(function (d, i) {
+      var a = 0.3 + 0.7 * ((i + 1) / recent.length);
+      var px = cx + d.ux * u, py = cy - d.uy * u;
+      ctx.globalAlpha = a; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2);
+      if (d.pts > 0) { ctx.fillStyle = C.hit; ctx.fill(); ctx.strokeStyle = C.ink; ctx.stroke(); }
+      else { ctx.strokeStyle = C.miss; ctx.stroke(); }
+    });
+    ctx.globalAlpha = 1;
+
+    // point popups
+    popups = popups.filter(function (q) { return now - q.born < 1200; });
+    popups.forEach(function (q) {
+      var age = (now - q.born) / 1200;
+      ctx.globalAlpha = 1 - age;
+      ctx.fillStyle = q.pts > 0 ? C.hit : C.miss;
+      ctx.font = "700 18px 'Pixelify Sans', monospace";
+      ctx.textAlign = 'left';
+      ctx.fillText('+' + q.pts, cx + q.ux * u + 9, cy - q.uy * u - 9 - age * 10);
+    });
+    ctx.globalAlpha = 1;
+
+    // live crosshair: up means too fast, down means too slow
+    var target = Math.max(-4.3, Math.min(4.3, spm - p.spm));
+    aimErr += (target - aimErr) * EASE;
+    var ay = cy - aimErr * u;
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
+    ctx.setLineDash(p.kind === 'row' && inPhase < SETTLE ? [3, 3] : []);
+    ctx.beginPath(); ctx.arc(cx, ay, 10, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(cx - 16, ay); ctx.lineTo(cx + 16, ay);
+    ctx.moveTo(cx, ay - 16); ctx.lineTo(cx, ay + 16);
+    ctx.stroke();
+  }
+
+  // ---- Darts ----
+  function throwDart(p, now) {
+    var err = spm - p.spm, a = Math.abs(err);
+    var pts = a === 0 ? 10 : a === 1 ? 5 : a === 2 ? 2 : 0;
+    var r = a === 0 ? Math.random() * 0.3 : Math.min(a, 4.2);
+    var ang;
+    if (err > 0) ang = (20 + Math.random() * 140) * Math.PI / 180;
+    else if (err < 0) ang = (200 + Math.random() * 140) * Math.PI / 180;
+    else ang = Math.random() * Math.PI * 2;
+    var d = { ux: r * Math.cos(ang), uy: r * Math.sin(ang), pts: pts, born: now };
+    darts.push(d); popups.push(d);
+    stats.score += pts; stats.darts++;
+    if (a <= 1) stats.on++;
+    if (a === 0) stats.bulls++;
+    var b = stats.by[p.spm]; b.n++; if (a <= 1) b.on++;
+    if (pts === 10) beep(988, 0.08, 0.1);
+  }
+
+  // ---- Phase change ----
+  function nextText(i) {
+    var n = timeline[i + 1];
+    if (!n) return 'Last step';
+    if (n.kind === 'row') return 'Next: ' + n.spm + ' spm for ' + n.len + 's';
+    if (n.kind === 'rest') return 'Next: rest ' + n.len + 's';
+    return '';
+  }
+  function onPhase(p, i) {
+    lastSec = -1;
+    if (p.kind === 'ready') {
+      setText($('phase-label'), 'GET READY');
+      setText($('phase-sub'), 'Start rowing. First up: ' + p.spm + ' spm');
+      setText($('h-round'), '–');
+    } else if (p.kind === 'warm') {
+      setText($('phase-label'), 'WARM UP');
+      setText($('phase-sub'), 'Row easy for 3 min · ' + nextText(i));
+      setText($('h-round'), '–');
+      beep(392, 0.25, 0.15);
+    } else if (p.kind === 'row') {
+      setText($('phase-label'), 'ROW AT ' + p.spm);
+      setText($('phase-sub'), p.len + 's · ' + nextText(i));
+      setText($('h-round'), p.round + '/' + roundsTotal);
+      beep(NOTE[p.spm] || 523, 0.25, 0.15);
+    } else {
+      setText($('phase-label'), 'REST');
+      setText($('phase-sub'), nextText(i));
+      setText($('h-round'), p.round + '/' + rounds);
+      beep(262, 0.3, 0.15);
+    }
+  }
+
+  // ---- Main loop ----
+  function frame(now) {
+    if (!running) return;
+    var el = (now - t0) / 1000;
+    if (el >= total) { finish(); return; }
+    var i = 0;
+    while (i < timeline.length - 1 && el >= timeline[i].start + timeline[i].len) i++;
+    var p = timeline[i], inPhase = el - p.start;
+    if (i !== lastPhase) { lastPhase = i; onPhase(p, i); }
+
+    if (p.kind === 'row' && inPhase >= SETTLE) {
+      var k = Math.floor((inPhase - SETTLE) / GAP);
+      if (k > p.thrown) { p.thrown = k; throwDart(p, now); }
+    }
+
+    var left = Math.ceil(p.len - inPhase);
+    if (left !== lastSec) {
+      lastSec = left;
+      if (left >= 1 && left <= 3 && i < timeline.length - 1) beep(784, 0.06, 0.08);
+    }
+
+    setText($('h-score'), String(stats.score));
+    setText($('h-time'), fmt(left));
+    setText($('r-target'), (p.kind === 'rest' || p.kind === 'warm') ? '–' : String(p.spm));
+    setText($('r-you'), String(spm));
+
+    var d = $('delta'), txt = '', hit = false;
+    if (p.kind === 'rest') txt = 'Breathe';
+    else if (p.kind === 'warm') txt = 'Row easy';
+    else if (p.kind === 'ready') txt = 'Start rowing';
+    else if (spm === 0) txt = 'Waiting for strokes';
+    else {
+      var err = spm - p.spm;
+      if (err === 0) { txt = 'On the bull'; hit = true; }
+      else if (err > 0) txt = 'Slow down ' + err;
+      else txt = 'Speed up ' + (-err);
+    }
+    setText(d, txt);
+    d.classList.toggle('hit', hit);
+
+    $('btn-skip').hidden = (p.kind !== 'warm');
+    draw(p, now, inPhase);
+    rafId = requestAnimationFrame(frame);
+  }
+
+  // ---- Start / finish ----
+  async function lock() { try { wake = await navigator.wakeLock.request('screen'); } catch (e) { wake = null; } }
+  function unlock() { try { if (wake) wake.release(); } catch (e) { } wake = null; }
+
+  function start() {
+    rounds = +$('rounds').value;
+    wkey = $('workout').value;
+    timeline = buildTimeline(wkey, rounds);
+    roundsTotal = wkey === 'w1s2' ? 6 : rounds;
+    setText($('h-round-label'), wkey === 'w1s2' ? 'Interval' : 'Pyramid');
+    var acc = 0, by = {};
+    timeline.forEach(function (p) {
+      p.start = acc; p.thrown = -1; acc += p.len;
+      if (p.kind === 'row' && !by[p.spm]) by[p.spm] = { n: 0, on: 0 };
+    });
+    total = acc;
+    stats = { score: 0, darts: 0, on: 0, bulls: 0, by: by };
+    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1;
+    if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
+    if (audio && audio.state === 'suspended') audio.resume();
+    $('practice').hidden = (mode !== 'practice');
+    setText($('link'), mode === 'pm5' ? 'Reading stroke rate from ' + pmName : 'Practice mode. Rate is set by you.');
+    show('game');
+    lock();
+    running = true;
+    t0 = performance.now();
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function finish() {
+    running = false; cancelAnimationFrame(rafId); unlock();
+    if (stats.darts > 0) beep(1047, 0.35, 0.12);
+    var pct = stats.darts ? Math.round(stats.on / stats.darts * 100) : 0;
+    $('f-score').textContent = String(stats.score);
+    $('f-pct').textContent = pct + '%';
+    $('f-bulls').textContent = String(stats.bulls);
+    var ul = $('f-by'); ul.innerHTML = '';
+    Object.keys(stats.by).map(Number).sort(function (a, b) { return a - b; }).forEach(function (r) {
+      var b = stats.by[r], li = document.createElement('li');
+      li.textContent = r + ' spm: ' + (b.n ? Math.round(b.on / b.n * 100) + '% on target' : 'no darts') + ' (' + b.n + ' darts)';
+      ul.appendChild(li);
+    });
+    show('results');
+  }
+
+  function showPlan() {
+    var key = $('workout').value, info = INFO[key], dl = $('plan');
+    $('eyebrow').textContent = info.eyebrow;
+    $('rounds-field').hidden = (key !== 'w1s1');
+    dl.innerHTML = '';
+    info.plan.forEach(function (row) {
+      var dt = document.createElement('dt'), dd = document.createElement('dd');
+      dt.textContent = row[0]; dd.textContent = row[1];
+      dl.appendChild(dt); dl.appendChild(dd);
+    });
+  }
+  $('workout').addEventListener('change', showPlan);
+  showPlan();
+
+  $('btn-start').addEventListener('click', start);
+  $('btn-end').addEventListener('click', finish);
+  $('btn-skip').addEventListener('click', function () {
+    if (running && timeline[1]) t0 = performance.now() - timeline[1].start * 1000;
+  });
+  $('btn-again').addEventListener('click', function () { show('setup'); });
+})();
+</script>
+</body>
+</html>
