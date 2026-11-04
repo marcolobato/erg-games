@@ -36,7 +36,7 @@ Design lesson: a game for rowing should reward the thing the workout asks for. I
 
 ## Current state
 
-- Two files: `index.html` (HTML and JS together) and `style.css`. No build step, no dependencies. It is the first example app.
+- Three files: `index.html` (HTML and the app's JS), `style.css`, and `pm5.js` (all the Bluetooth code, no page code). No build step, no dependencies. It is the first example app. `index.html` loads `pm5.js` as a module, so it must be opened through a web server (localhost or GitHub Pages), not by double-clicking.
 - Connects to a PM5 with Web Bluetooth. Confirmed working: the live stroke rate in the app matched the PM5 display.
 - Practice mode: arrow keys set a fake stroke rate, so it runs with no erg.
 - Two workouts built in, named by code only: Week 1 Session 2 (W1S2, default) and Week 1 Session 1 (W1S1).
@@ -45,7 +45,7 @@ Design lesson: a game for rowing should reward the thing the workout asks for. I
 
 ## What is verified and what is not
 
-Verified: Bluetooth connection, live stroke rate, game runs through warm-up and into the first interval (also tested headless).
+Verified: Bluetooth connection, live stroke rate, game runs through warm-up and into the first interval (also tested headless). After the Bluetooth code moved into `pm5.js`, a real PM5 still showed live stroke rate (checked on localhost, 2026-11-04).
 
 Not verified:
 - How the game feels while actually rowing a full session.
