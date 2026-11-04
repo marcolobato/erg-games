@@ -88,15 +88,12 @@
   </section>
 </main>
 
-<script>
+<script type="module">
+import * as pm5 from './pm5.js';
+
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-
-  // ---- Concept2 PM5 Bluetooth ids (rowing service) ----
-  var SVC = 'ce060030-43e5-11e4-916c-0800200c9a66';
-  var CH_ADD1 = 'ce060032-43e5-11e4-916c-0800200c9a66';   // additional status 1: stroke rate is byte 5
-  var CH_SAMPLE = 'ce060034-43e5-11e4-916c-0800200c9a66'; // how often status is sent
 
   // ---- Workouts ----
   var STEPS = [[90, 24], [60, 26], [30, 28]]; // W1S1: seconds, strokes per minute
@@ -181,27 +178,14 @@
 
   async function connectPM5() {
     status('Pick your PM5 from the list. Wake it up first by pulling the handle.');
-    var dev = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'PM5' }],
-      optionalServices: [SVC]
-    });
-    dev.addEventListener('gattserverdisconnected', onDrop);
-    var server = await dev.gatt.connect();
-    var svc = await server.getPrimaryService(SVC);
-    try {
-      var sr = await svc.getCharacteristic(CH_SAMPLE);
-      await sr.writeValue(new Uint8Array([1])); // ask for updates about twice a second
-    } catch (e) { /* default rate still works */ }
-    var ch = await svc.getCharacteristic(CH_ADD1);
-    ch.addEventListener('characteristicvaluechanged', function (ev) {
-      var v = ev.target.value;
-      if (v.byteLength > 5) {
-        spm = v.getUint8(5);
+    var pm = await pm5.connect({
+      onStrokeRate: function (n) {
+        spm = n;
         setText($('live-n'), String(spm));
-      }
+      },
+      onDisconnect: onDrop
     });
-    await ch.startNotifications();
-    pmName = dev.name || 'PM5';
+    pmName = pm.name;
     mode = 'pm5';
     spm = 0;
     status('Connected to ' + pmName + '. Pull the handle and check the live rate below.');
@@ -225,7 +209,7 @@
     $('btn-start').disabled = false;
   });
 
-  if (!navigator.bluetooth) {
+  if (!pm5.isSupported()) {
     $('support').hidden = false;
     $('btn-connect').disabled = true;
   }
