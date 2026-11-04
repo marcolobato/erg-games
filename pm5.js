@@ -163,7 +163,9 @@ export function decodePacket(name, v) {
 // Call the function this returns with every Force Curve packet. When a whole
 // curve has arrived, onCurve(points) is called with an array of numbers.
 // (The oldest PM5 hardware, "PM5v1", does not send this stream.)
-export function createForceCurveAssembler(onCurve) {
+// onProgress(pointsSoFar, expectedPoints), if given, is called after every
+// piece, so a page can draw the curve as it arrives instead of waiting.
+export function createForceCurveAssembler(onCurve, onProgress) {
   var points = [], pieces = 0, lastSeq = -1, lastBytes = '';
   return function (v) {
     if (v.byteLength < 2) return;
@@ -175,6 +177,7 @@ export function createForceCurveAssembler(onCurve) {
     for (var i = 0; i < count && 2 + i * 2 + 1 < v.byteLength; i++) points.push(u16(v, 2 + i * 2));
     pieces++;
     lastSeq = seq;
+    if (onProgress) onProgress(points.slice(), total * 9); // up to 9 points per piece
     if (pieces >= total) {
       var curve = points;
       points = []; pieces = 0; lastSeq = -1;

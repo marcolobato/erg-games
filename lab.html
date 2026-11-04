@@ -61,6 +61,7 @@ a { color: var(--ink); }
     <h2>Power curve</h2>
     <p id="curve-info" class="note">Waiting for the first stroke. The PM5 sends the shape of each pull as a stream of points, and this graph draws the latest stroke from them.</p>
     <canvas id="curve" role="img" aria-label="Graph of how hard you pulled during the last stroke" style="display: block; width: 100%; height: 180px;"></canvas>
+    <p class="note">Units: pounds of force (lbf), the same as the "lbf" label on your PM5's graph. Your PM5 can also show newtons ("N"): 1 lbf is about 4.45 N. Left to right is one drive: legs first, then the body swing, then the arms. The PM5 only sends the curve after each drive, so it appears just after you finish the stroke and grows as it arrives. The faint line is your last full stroke.</p>
   </section>
 
   <!-- RECORD -->
@@ -113,9 +114,15 @@ import * as pm5 from './pm5.js';
   // The scale is fixed, so an easy stroke stays low and a hard one draws tall.
   // Left to right is the drive: legs first, then back and arms.
   var scaleLbf = 200; // top of the graph, grows if a stroke goes higher
-  var curve = { points: null, previous: null, count: 0, dirty: false };
+  // The curve is drawn right away on every piece (no waiting for the next
+  // screen refresh), so it starts growing about 0.1 s after the drive ends.
+  var curve = { points: null, previous: null, live: null, expected: 0, count: 0 };
   var feedCurve = pm5.createForceCurveAssembler(function (points) {
-    curve.previous = curve.points; curve.points = points; curve.count++; curve.dirty = true;
+    curve.previous = curve.points; curve.points = points; curve.live = null; curve.count++;
+    drawCurve();
+  }, function (soFar, expected) {
+    curve.live = soFar; curve.expected = expected;
+    drawCurve();
   });
   function drawCurve() {
     var cv = $('curve'), ctx = cv.getContext('2d');
@@ -127,7 +134,10 @@ import * as pm5 from './pm5.js';
     var cs = getComputedStyle(document.documentElement);
     var ink = cs.getPropertyValue('--ink').trim(), inkSoft = cs.getPropertyValue('--ink-soft').trim();
     var line = cs.getPropertyValue('--line').trim();
-    var pts = curve.points, peak = Math.max.apply(null, pts.concat([0]));
+    // while a stroke is arriving, draw it over the last full stroke
+    var pts = curve.live || curve.points, faint = curve.live ? curve.points : curve.previous;
+    if (!pts) return;
+    var peak = Math.max.apply(null, pts.concat([0]));
     if (peak > scaleLbf) scaleLbf = Math.ceil(peak / 50) * 50;
     var left = 64, pad = 10, top = pad, bottom = h - pad;
     function yFor(p) { return bottom - (p / scaleLbf) * (bottom - top); }
@@ -142,19 +152,22 @@ import * as pm5 from './pm5.js';
       ctx.fillText(mark === scaleLbf ? mark + ' lbf' : String(mark), left - 6, yFor(mark));
     }
 
-    function trace(points, alpha) {
+    // span = how many points fill the width; a growing stroke uses its expected length
+    function trace(points, alpha, span) {
       ctx.globalAlpha = alpha; ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.beginPath();
       points.forEach(function (p, i) {
-        var x = left + (points.length > 1 ? i / (points.length - 1) : 0) * (w - pad - left);
+        var x = left + (span > 0 ? Math.min(i / span, 1) : 0) * (w - pad - left);
         if (i === 0) ctx.moveTo(x, yFor(p)); else ctx.lineTo(x, yFor(p));
       });
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    if (curve.previous) trace(curve.previous, 0.3); // the stroke before, faint
-    trace(pts, 1);
-    setText($('curve-info'), curve.count + (curve.count === 1 ? ' stroke' : ' strokes') + ' drawn. Latest peak: ' + peak + ' lbf (about ' +
-      Math.round(peak * 4.448) + ' N). The faint line is the stroke before.');
+    if (faint) trace(faint, 0.3, faint.length - 1); // your last full stroke
+    trace(pts, 1, curve.live ? Math.max(curve.expected - 1, pts.length - 1) : pts.length - 1);
+    setText($('curve-info'), curve.live
+      ? 'Stroke ' + (curve.count + 1) + ' arriving…'
+      : curve.count + (curve.count === 1 ? ' stroke' : ' strokes') + ' drawn. Latest peak: ' + peak + ' lbf (about ' +
+        Math.round(peak * 4.448) + ' N).');
   }
 
   // ---- Packets ----
@@ -217,9 +230,6 @@ import * as pm5 from './pm5.js';
         });
       }
     });
-
-    // Power curve (only redraw when a new stroke arrived)
-    if (curve.dirty) { curve.dirty = false; drawCurve(); }
 
     // Recording
     setText($('rec-status'), recording
