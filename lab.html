@@ -21,6 +21,11 @@ a { color: var(--ink); }
 .fields dt { color: var(--ink-soft); }
 .fields dd { margin: 0; font-variant-numeric: tabular-nums; }
 .awake { margin: 0; font-size: 12px; color: var(--ink-soft); }
+/* The box sets the graph's size and the canvas is pinned to fill it, so the
+   canvas's own built-in size can never push the layout around (it did on
+   iPhone, which drew each stroke tiny and then stretched it). */
+.graph { position: relative; height: 180px; }
+.graph canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
 /* The live view (key metrics and power curve). On a laptop or a phone held
    upright these wrappers do nothing and the panels flow as usual. */
@@ -43,7 +48,7 @@ a { color: var(--ink); }
   .metrics { flex: 1; grid-template-columns: repeat(2, 1fr); align-content: space-evenly; gap: 8px 16px; }
   .metrics .label { font-size: 11px; }
   .metrics .value { font-size: min(10vh, 5vw); line-height: 1; }
-  #curve { flex: 1; min-height: 0; height: auto !important; }
+  .graph { flex: 1; min-height: 0; height: auto; }
   #curve-info { display: block; margin: 0; } /* keep the peak readout */
 }
 </style>
@@ -90,7 +95,7 @@ a { color: var(--ink); }
   <section class="panel panel-curve">
     <h2>Power curve</h2>
     <p id="curve-info" class="note">Waiting for the first stroke. The PM5 sends the shape of each pull as a stream of points, and this graph draws the latest stroke from them.</p>
-    <canvas id="curve" role="img" aria-label="Graph of how hard you pulled during the last stroke" style="display: block; width: 100%; height: 180px;"></canvas>
+    <div class="graph"><canvas id="curve" role="img" aria-label="Graph of how hard you pulled during the last stroke"></canvas></div>
     <p class="note">Units: pounds of force (lbf), the same as the "lbf" label on your PM5's graph. Your PM5 can also show newtons ("N"): 1 lbf is about 4.45 N. Left to right is one drive: legs first, then the body swing, then the arms. The PM5 only sends the curve after each drive, so it appears just after you finish the stroke and grows as it arrives. The faint line is your last full stroke.</p>
   </section>
 
@@ -159,6 +164,7 @@ import * as pm5 from './pm5.js';
   function drawCurve() {
     var cv = $('curve'), ctx = cv.getContext('2d');
     var box = cv.getBoundingClientRect(), w = Math.round(box.width), h = Math.round(box.height);
+    if (w < 100 || h < 60) return; // too small to draw anything useful
     var dpr = window.devicePixelRatio || 1;
     if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
