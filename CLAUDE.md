@@ -67,6 +67,7 @@ Source: Concept2 PM CSAFE Communication Definition, revision 0.31 (public PDF li
 - Heart rate: the PM5 passes the user's paired Garmin chest strap through in Additional Status 1 byte 6 (confirmed on a real row, 2026-11-04), so no separate strap connection is needed. A direct strap connection (standard Bluetooth heart rate service) also works.
 - Confirmed on the first recorded row (2026-11-04): pace (bytes 7-8 agree with the speed field and the PM5 screen), stroke rate, distance, time, power per stroke, and the force curve. Force curve values are pounds of force (lbf): each curve's peak matches that stroke's peak drive force in Stroke Data. Draw it on a fixed lbf scale, not stretched to fit, or easy strokes look like hard ones.
 - Other apps (like ErgData) can hold the connection. Close them first.
+- `docs/pm5-data.md` is the public summary of all of this (Phase 1 write-up). Keep it in step when facts change.
 - Useful libraries to read for reference: ergometer.js (JavaScript), Concept2-SDK by RowBotics (Swift), c2bluetooth (Flutter).
 
 ## Workout format (plan)
