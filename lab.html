@@ -22,22 +22,29 @@ a { color: var(--ink); }
 .fields dd { margin: 0; font-variant-numeric: tabular-nums; }
 .awake { margin: 0; font-size: 12px; color: var(--ink-soft); }
 
-/* Phone on its side (like the holder on the PM5): live numbers and the
-   power curve side by side, and the long notes hidden to save room. */
+/* The live view (key metrics and power curve). On a laptop or a phone held
+   upright these wrappers do nothing and the panels flow as usual. */
+.live { display: contents; }
+
+/* Phone on its side (like the holder on the PM5): the live view fills the
+   screen, numbers on the left and the power curve on the right. */
 @media (orientation: landscape) and (max-height: 500px) {
-  body { padding-block: 8px; }
-  .wrap { max-width: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: start; }
-  .wrap > * { grid-column: 1 / -1; }
-  .wrap > .panel-metrics, .wrap > .panel-curve { grid-column: auto; }
+  body { padding-block: 0; }
+  .wrap { max-width: none; gap: 8px; }
   .eyebrow, .lede, .note, .src { display: none; }
   h1 { font-size: 22px; }
   h2 { font-size: 16px; }
   .panel { padding: 10px; gap: 8px; }
   .status { min-height: 0; }
-  .metrics { grid-template-columns: repeat(4, 1fr); gap: 8px 8px; }
-  .metrics .label { font-size: 10px; }
-  .metrics .value { font-size: 24px; }
-  #curve { height: 170px !important; }
+
+  .live { display: grid; grid-template-columns: 2fr 3fr; grid-template-rows: minmax(0, 1fr); height: 100dvh; }
+  .live > .panel { height: 100%; min-width: 0; border: 0; border-radius: 0; }
+  .live > .panel-curve { border-left: 2px solid var(--line); }
+  .metrics { flex: 1; grid-template-columns: repeat(2, 1fr); align-content: space-evenly; gap: 8px 16px; }
+  .metrics .label { font-size: 11px; }
+  .metrics .value { font-size: min(10vh, 5vw); line-height: 1; }
+  #curve { flex: 1; min-height: 0; height: auto !important; }
+  #curve-info { display: block; margin: 0; } /* keep the peak readout */
 }
 </style>
 </head>
@@ -61,6 +68,9 @@ a { color: var(--ink); }
     <p class="note">Close other apps that use the PM5 first, like ErgData. A chest strap works as is. A watch must be broadcasting heart rate over Bluetooth. Straps often allow only one or two connections, so to test the PM5's own heart rate first, leave the heart rate monitor button alone.</p>
   </section>
 
+  <!-- LIVE VIEW: key metrics and power curve (full screen, side by side, on a phone on its side) -->
+  <div class="live">
+
   <!-- KEY METRICS -->
   <section class="panel panel-metrics">
     <h2>Key metrics</h2>
@@ -83,6 +93,8 @@ a { color: var(--ink); }
     <canvas id="curve" role="img" aria-label="Graph of how hard you pulled during the last stroke" style="display: block; width: 100%; height: 180px;"></canvas>
     <p class="note">Units: pounds of force (lbf), the same as the "lbf" label on your PM5's graph. Your PM5 can also show newtons ("N"): 1 lbf is about 4.45 N. Left to right is one drive: legs first, then the body swing, then the arms. The PM5 only sends the curve after each drive, so it appears just after you finish the stroke and grows as it arrives. The faint line is your last full stroke.</p>
   </section>
+
+  </div>
 
   <!-- RECORD -->
   <section class="panel">
@@ -257,6 +269,9 @@ import * as pm5 from './pm5.js';
       : 'Not recording. Recording saves every packet to a file you can keep.');
   }
   setInterval(render, 250);
+
+  // The graph changes size when the phone turns, so redraw it.
+  window.addEventListener('resize', function () { if (curve.points) drawCurve(); });
 
   // ---- Keep the screen on while rowing ----
   // A "wake lock" stops the screen dimming. The browser drops it when the
