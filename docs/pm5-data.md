@@ -2,7 +2,7 @@
 
 A short field guide, written while building this project. It covers what the PM5 rowing monitor shares with a web page, what we confirmed on real rows, and the surprises along the way.
 
-You can try it yourself with the data explorer: **[marcolobato.github.io/erg-games/lab.html](https://marcolobato.github.io/erg-games/lab.html)** (Chrome or Edge on a laptop, Chrome on Android, or the Bluefy browser on iPhone).
+You can try it yourself with the data explorer: **[marcolobato.github.io/erg-games/lab.html](https://marcolobato.github.io/erg-games/lab.html)** (Chrome or Edge on a laptop, Chrome on Android, or downloading the Bluefy browser on iPhone).
 
 ![The data explorer on an iPhone held sideways on the PM5: key numbers on the left, the power curve of the latest stroke on the right, with the previous stroke faint behind it](images/lab-iphone-landscape.png)
 
