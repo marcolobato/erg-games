@@ -33,12 +33,6 @@
         <option value="w1s2" selected>Week 1 · Session 2</option>
         <option value="w1s1">Week 1 · Session 1</option>
       </select>
-      <span id="rounds-field" hidden>
-        <label for="rounds">Pyramids</label>
-        <select id="rounds">
-          <option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
-        </select>
-      </span>
       <label class="check" for="sound"><input type="checkbox" id="sound" checked> Sound</label>
     </div>
     <button id="btn-start" class="btn primary" type="button" disabled>Start workout</button>
@@ -96,9 +90,11 @@ import * as pm5 from './pm5.js';
   var $ = function (id) { return document.getElementById(id); };
 
   // ---- Workouts ----
+  // Every workout adds up to exactly 15 min. Warm-up and cooldown fill what the main set leaves.
   var STEPS = [[90, 24], [60, 26], [30, 28]]; // W1S1: seconds, strokes per minute
-  var REST = 30, READY = 5, SETTLE = 4, GAP = 2;
-  var WARM = 180, INTERVAL = 120;             // both: 3 min warm-up. W1S2: six 2 min steps
+  var PYRAMIDS = 3, PADDLE = 30, PADDLE_SPM = 20, COOL = 30; // W1S1: easy paddle after every step
+  var READY = 5, SETTLE = 4, GAP = 2;
+  var WARM = { w1s2: 180, w1s1: 90 }, INTERVAL = 120; // W1S2: six 2 min steps
 
   var INFO = {
     w1s2: {
@@ -113,26 +109,32 @@ import * as pm5 from './pm5.js';
     w1s1: {
       eyebrow: 'Week 1 · Session 1',
       plan: [
-        ['3 min', 'Warm up. Row easy, no darts.'],
+        ['90 sec', 'Warm up. Row easy, no darts.'],
         ['90 sec', '24 spm'], ['60 sec', '26 spm'], ['30 sec', '28 spm'],
-        ['30 sec', 'Rest between pyramids'],
+        ['30 sec', 'Paddle at about 20 spm after every step. No darts.'],
+        ['', 'Three pyramids, then a 30 sec cooldown. 15 min total.'],
         ['Score', 'A dart every 2 sec. Exact rate = 10, off by 1 = 5, off by 2 = 2. Darts start 4 sec into each step.']
       ]
     }
   };
 
-  function buildTimeline(key, rounds) {
+  function buildTimeline(key) {
     var t = [], i;
+    t.push({ kind: 'warm', len: WARM[key] });
     if (key === 'w1s2') {
-      t.push({ kind: 'warm', len: WARM });
       for (i = 0; i < 6; i++) t.push({ kind: 'row', len: INTERVAL, spm: i % 2 === 0 ? 22 : 24, round: i + 1 });
       return t;
     }
-    t.push({ kind: 'warm', len: WARM });
-    for (var r = 1; r <= rounds; r++) {
-      STEPS.forEach(function (s) { t.push({ kind: 'row', len: s[0], spm: s[1], round: r }); });
-      if (r < rounds) t.push({ kind: 'rest', len: REST, round: r });
+    // W1S1: a paddle follows every step, except the very last one,
+    // which goes straight into the cooldown. 1:30 + 13:00 + 0:30 = 15:00.
+    for (var r = 1; r <= PYRAMIDS; r++) {
+      STEPS.forEach(function (s, j) {
+        t.push({ kind: 'row', len: s[0], spm: s[1], round: r });
+        var lastStep = (r === PYRAMIDS && j === STEPS.length - 1);
+        if (!lastStep) t.push({ kind: 'paddle', len: PADDLE, round: r });
+      });
     }
+    t.push({ kind: 'cool', len: COOL });
     return t;
   }
 
@@ -141,7 +143,7 @@ import * as pm5 from './pm5.js';
   var spm = 0;              // current stroke rate
   var practiceSpm = 20;
   var running = false, rafId = 0, t0 = 0, total = 0;
-  var timeline = [], rounds = 4, roundsTotal = 6, wkey = 'w1s2', lastPhase = -1, lastSec = -1;
+  var timeline = [], roundsTotal = 6, wkey = 'w1s2', lastPhase = -1, lastSec = -1;
   var darts = [], popups = [], aimErr = 0, stats = null;
   var audio = null, wake = null, pmName = '';
 
@@ -166,6 +168,9 @@ import * as pm5 from './pm5.js';
 
   // ---- PM5 connection ----
   function onDrop() {
+    // The PM5 is gone, so the button offers to connect again
+    $('btn-connect').textContent = 'Connect PM5';
+    $('btn-connect').disabled = false;
     if (mode === 'pm5') {
       spm = 0;
       setText($('link'), 'PM5 connection lost. Reconnect from the start screen.');
@@ -188,6 +193,9 @@ import * as pm5 from './pm5.js';
     pmName = pm.name;
     mode = 'pm5';
     spm = 0;
+    // Show the connection on the button itself, so it is clear it worked
+    $('btn-connect').textContent = 'PM5 connected';
+    $('btn-connect').disabled = true;
     status('Connected to ' + pmName + '. Pull the handle and check the live rate below.');
     $('live').hidden = false;
     $('btn-start').disabled = false;
@@ -253,7 +261,7 @@ import * as pm5 from './pm5.js';
     var s = size; if (!s) return;
     ctx.clearRect(0, 0, s, s);
     var cx = s / 2, cy = s / 2, R = (s / 2) * 0.84, u = R / 3.5;
-    var resting = p.kind === 'rest' || p.kind === 'warm';
+    var resting = p.kind !== 'row'; // warm-up, paddle and cooldown have no darts
 
     // rings: 3.5 / 2.5 / 1.5 / 0.5 spm from the goal
     ctx.globalAlpha = resting ? 0.3 : 1;
@@ -273,18 +281,17 @@ import * as pm5 from './pm5.js';
     ctx.fillText('2', cx + 2.0 * u, cy + 4);
 
     if (resting) {
+      // No darts: show what this part is, your live rate, and the time left
+      var title = { warm: 'WARM UP', paddle: 'PADDLE', cool: 'COOL DOWN' }[p.kind];
+      var until = { warm: 'darts start in ', paddle: 'next step in ', cool: 'done in ' }[p.kind];
       ctx.fillStyle = C.ink;
       ctx.font = "700 34px 'JetBrains Mono', monospace";
-      if (p.kind === 'warm') {
-        ctx.fillText('WARM UP', cx, cy - 14);
-        ctx.font = "700 30px 'JetBrains Mono', monospace";
-        ctx.fillText(spm + ' spm', cx, cy + 24);
-        ctx.fillStyle = C['ink-soft'];
-        ctx.font = "500 12px 'IBM Plex Mono', monospace";
-        ctx.fillText('darts start in ' + fmt(Math.ceil(p.len - inPhase)), cx, cy + 50);
-      } else {
-        ctx.fillText('REST', cx, cy + 12);
-      }
+      ctx.fillText(title, cx, cy - 14);
+      ctx.font = "700 30px 'JetBrains Mono', monospace";
+      ctx.fillText(spm + ' spm', cx, cy + 24);
+      ctx.fillStyle = C['ink-soft'];
+      ctx.font = "500 12px 'IBM Plex Mono', monospace";
+      ctx.fillText(until + fmt(Math.ceil(p.len - inPhase)), cx, cy + 50);
       return;
     }
 
@@ -349,7 +356,8 @@ import * as pm5 from './pm5.js';
     var n = timeline[i + 1];
     if (!n) return 'Last step';
     if (n.kind === 'row') return 'Next: ' + n.spm + ' spm for ' + n.len + 's';
-    if (n.kind === 'rest') return 'Next: rest ' + n.len + 's';
+    if (n.kind === 'paddle') return 'Next: paddle ' + n.len + 's';
+    if (n.kind === 'cool') return 'Next: cool down';
     return '';
   }
   function onPhase(p, i) {
@@ -360,7 +368,7 @@ import * as pm5 from './pm5.js';
       setText($('h-round'), '–');
     } else if (p.kind === 'warm') {
       setText($('phase-label'), 'WARM UP');
-      setText($('phase-sub'), 'Row easy for 3 min · ' + nextText(i));
+      setText($('phase-sub'), 'Row easy for ' + fmt(p.len) + ' · ' + nextText(i));
       setText($('h-round'), '–');
       beep(392, 0.25, 0.15);
     } else if (p.kind === 'row') {
@@ -368,10 +376,15 @@ import * as pm5 from './pm5.js';
       setText($('phase-sub'), p.len + 's · ' + nextText(i));
       setText($('h-round'), p.round + '/' + roundsTotal);
       beep(NOTE[p.spm] || 523, 0.25, 0.15);
+    } else if (p.kind === 'paddle') {
+      setText($('phase-label'), 'PADDLE');
+      setText($('phase-sub'), 'Easy, about ' + PADDLE_SPM + ' spm · ' + nextText(i));
+      setText($('h-round'), p.round + '/' + roundsTotal);
+      beep(262, 0.3, 0.15);
     } else {
-      setText($('phase-label'), 'REST');
-      setText($('phase-sub'), nextText(i));
-      setText($('h-round'), p.round + '/' + rounds);
+      setText($('phase-label'), 'COOL DOWN');
+      setText($('phase-sub'), 'Row easy to finish');
+      setText($('h-round'), '–');
       beep(262, 0.3, 0.15);
     }
   }
@@ -399,12 +412,12 @@ import * as pm5 from './pm5.js';
 
     setText($('h-score'), String(stats.score));
     setText($('h-time'), fmt(left));
-    setText($('r-target'), (p.kind === 'rest' || p.kind === 'warm') ? '–' : String(p.spm));
+    setText($('r-target'), p.kind === 'row' ? String(p.spm) : '–');
     setText($('r-you'), String(spm));
 
     var d = $('delta'), txt = '', hit = false;
-    if (p.kind === 'rest') txt = 'Breathe';
-    else if (p.kind === 'warm') txt = 'Row easy';
+    if (p.kind === 'paddle') txt = 'Paddle easy';
+    else if (p.kind === 'warm' || p.kind === 'cool') txt = 'Row easy';
     else if (p.kind === 'ready') txt = 'Start rowing';
     else if (spm === 0) txt = 'Waiting for strokes';
     else {
@@ -426,10 +439,9 @@ import * as pm5 from './pm5.js';
   function unlock() { try { if (wake) wake.release(); } catch (e) { } wake = null; }
 
   function start() {
-    rounds = +$('rounds').value;
     wkey = $('workout').value;
-    timeline = buildTimeline(wkey, rounds);
-    roundsTotal = wkey === 'w1s2' ? 6 : rounds;
+    timeline = buildTimeline(wkey);
+    roundsTotal = wkey === 'w1s2' ? 6 : PYRAMIDS;
     setText($('h-round-label'), wkey === 'w1s2' ? 'Interval' : 'Pyramid');
     var acc = 0, by = {};
     timeline.forEach(function (p) {
@@ -469,7 +481,6 @@ import * as pm5 from './pm5.js';
   function showPlan() {
     var key = $('workout').value, info = INFO[key], dl = $('plan');
     $('eyebrow').textContent = info.eyebrow;
-    $('rounds-field').hidden = (key !== 'w1s1');
     dl.innerHTML = '';
     info.plan.forEach(function (row) {
       var dt = document.createElement('dt'), dd = document.createElement('dd');
@@ -477,7 +488,19 @@ import * as pm5 from './pm5.js';
       dl.appendChild(dt); dl.appendChild(dd);
     });
   }
-  $('workout').addEventListener('change', showPlan);
+  // Remember the last workout picked, so the page opens on it next time.
+  // Storage can be blocked (private browsing), so reads and writes are wrapped.
+  var SAVE_KEY = 'erg-games-workout';
+  function saveChoice() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value })); } catch (e) { }
+  }
+  try {
+    var saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+    // Only use saved values that are still real options
+    if (saved && INFO[saved.workout]) $('workout').value = saved.workout;
+  } catch (e) { }
+
+  $('workout').addEventListener('change', function () { showPlan(); saveChoice(); });
   showPlan();
 
   $('btn-start').addEventListener('click', start);
