@@ -166,6 +166,9 @@ import * as pm5 from './pm5.js';
 
   // ---- PM5 connection ----
   function onDrop() {
+    // The PM5 is gone, so the button offers to connect again
+    $('btn-connect').textContent = 'Connect PM5';
+    $('btn-connect').disabled = false;
     if (mode === 'pm5') {
       spm = 0;
       setText($('link'), 'PM5 connection lost. Reconnect from the start screen.');
@@ -188,6 +191,9 @@ import * as pm5 from './pm5.js';
     pmName = pm.name;
     mode = 'pm5';
     spm = 0;
+    // Show the connection on the button itself, so it is clear it worked
+    $('btn-connect').textContent = 'PM5 connected';
+    $('btn-connect').disabled = true;
     status('Connected to ' + pmName + '. Pull the handle and check the live rate below.');
     $('live').hidden = false;
     $('btn-start').disabled = false;
