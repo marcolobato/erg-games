@@ -483,7 +483,21 @@ import * as pm5 from './pm5.js';
       dl.appendChild(dt); dl.appendChild(dd);
     });
   }
-  $('workout').addEventListener('change', showPlan);
+  // Remember the last workout picked, so the page opens on it next time.
+  // Storage can be blocked (private browsing), so reads and writes are wrapped.
+  var SAVE_KEY = 'erg-games-workout';
+  function saveChoice() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value, rounds: $('rounds').value })); } catch (e) { }
+  }
+  try {
+    var saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+    // Only use saved values that are still real options
+    if (saved && INFO[saved.workout]) $('workout').value = saved.workout;
+    if (saved && saved.rounds >= 1 && saved.rounds <= 6) $('rounds').value = String(saved.rounds);
+  } catch (e) { }
+
+  $('workout').addEventListener('change', function () { showPlan(); saveChoice(); });
+  $('rounds').addEventListener('change', saveChoice);
   showPlan();
 
   $('btn-start').addEventListener('click', start);
