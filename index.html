@@ -72,6 +72,8 @@
     </div>
     <!-- The pause menu. More options (like mute) can be added here later. -->
     <div class="stack menu" id="menu" hidden>
+      <p class="status" id="menu-msg" hidden></p>
+      <button id="btn-reconnect" class="btn primary" type="button" hidden>Reconnect PM5</button>
       <button id="btn-resume" class="btn primary" type="button">Resume</button>
       <button id="btn-restart" class="btn" type="button">Restart step</button>
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
@@ -162,6 +164,7 @@ import * as pm5 from './pm5.js';
   var counting = false, countdownTimer = 0;  // the 3-2-1 before rowing again
   var settleUntil = 0;                       // no darts until this many seconds into the workout
   var snap = { i: -1 };                      // the score when the current step began, for Restart step
+  var linkLost = false;                      // true while the PM5 is gone in the middle of a workout
 
   // ---- Helpers ----
   function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
@@ -186,18 +189,23 @@ import * as pm5 from './pm5.js';
   var NOTE = { 22: 466, 24: 523, 26: 587, 28: 659 };
 
   // ---- PM5 connection ----
+  // Back to "not connected" on the start screen
+  function lostToSetup() {
+    spm = 0; mode = null; linkLost = false;
+    status('PM5 disconnected. Press Connect PM5 to try again.');
+    $('btn-start').disabled = true;
+    $('live').hidden = true;
+  }
   function onDrop() {
     // The PM5 is gone, so the button offers to connect again
     $('btn-connect').textContent = 'Connect PM5';
     $('btn-connect').disabled = false;
-    if (mode === 'pm5') {
-      spm = 0;
-      setText($('link'), 'PM5 connection lost. Reconnect from the start screen.');
-      status('PM5 disconnected. Press Connect PM5 to try again.');
-      $('btn-start').disabled = true;
-      $('live').hidden = true;
-      mode = null;
-    }
+    if (mode !== 'pm5') return;
+    if (running) {
+      // Mid-workout: freeze the clock and offer to reconnect, so the session is not lost
+      spm = 0; linkLost = true;
+      holdInMenu();
+    } else lostToSetup();
   }
 
   async function connectPM5() {
@@ -509,8 +517,16 @@ import * as pm5 from './pm5.js';
     setText($('phase-sub'), fmt(el) + ' of ' + fmt(total) + ' · ' + phaseName(p));
     $('btn-skip').hidden = (p.kind !== 'warm');
     $('btn-restart').hidden = (p.kind !== 'row'); // only scored steps can be restarted
+    // Without the PM5 you can only reconnect or end the workout
+    $('menu-msg').hidden = !linkLost;
+    $('btn-reconnect').hidden = !linkLost;
+    $('btn-resume').hidden = linkLost;
+    if (linkLost) {
+      setText($('menu-msg'), 'PM5 disconnected. Pull the handle to wake it, then press Reconnect.');
+      $('btn-restart').hidden = true; $('btn-skip').hidden = true;
+    }
     showMenu(true);
-    $('btn-resume').focus(); // so Space or Enter resumes right away
+    $(linkLost ? 'btn-reconnect' : 'btn-resume').focus(); // so Space or Enter does the main thing
   }
   function pause() {
     paused = true;
@@ -539,15 +555,20 @@ import * as pm5 from './pm5.js';
       rafId = requestAnimationFrame(frame);
     })();
   }
+  // Pause now, or if a countdown is running, stop it and show the menu
+  function holdInMenu() {
+    if (!paused) pause();
+    else { clearTimeout(countdownTimer); counting = false; openMenu(); }
+  }
   function togglePause() {
     if (!running) return;
-    if (!paused) pause();
-    else if (counting) { clearTimeout(countdownTimer); counting = false; openMenu(); } // stop the countdown
-    else resume();
+    if (!paused || counting) holdInMenu();
+    else if (!linkLost) resume(); // no resuming without the PM5
   }
 
   function finish() {
     clearTimeout(countdownTimer); paused = false; counting = false;
+    if (linkLost) lostToSetup(); // the start screen should say the PM5 is gone
     running = false; cancelAnimationFrame(rafId); unlock();
     if (stats.darts > 0) beep(1047, 0.35, 0.12);
     var pct = stats.darts ? Math.round(stats.on / stats.darts * 100) : 0;
@@ -591,6 +612,24 @@ import * as pm5 from './pm5.js';
   $('btn-start').addEventListener('click', start);
   $('btn-pause').addEventListener('click', togglePause);
   $('btn-resume').addEventListener('click', resume);
+  // Reach the same PM5 again, with no device picker
+  $('btn-reconnect').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    setText($('menu-msg'), 'Reconnecting…');
+    try {
+      await pm5.reconnect();
+      if (!running) return; // the workout was ended while we waited
+      linkLost = false;
+      $('btn-connect').textContent = 'PM5 connected';
+      $('btn-connect').disabled = true;
+      openMenu(); // Resume is back
+    } catch (e) {
+      setText($('menu-msg'), 'Could not reconnect. Pull the handle to wake the PM5, then try again.');
+    } finally {
+      btn.disabled = false; // runs even after the early return above
+    }
+  });
   $('btn-end').addEventListener('click', finish);
   // From the pause menu: undo this step's darts and score, go back to its start, then count in
   $('btn-restart').addEventListener('click', function () {

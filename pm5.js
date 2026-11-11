@@ -12,6 +12,10 @@ export function isSupported() {
   return !!navigator.bluetooth;
 }
 
+// The PM5 picked in connect(), kept so reconnect() can reach it again
+// without opening the device picker.
+var gameDevice = null, gameHandlers = null;
+
 // Opens the browser's device picker, connects, and starts live updates.
 //   onStrokeRate(n)  called with strokes per minute, about twice a second
 //   onDisconnect()   called if the PM5 drops the connection
@@ -22,6 +26,20 @@ export async function connect(handlers) {
     optionalServices: [SVC]
   });
   dev.addEventListener('gattserverdisconnected', handlers.onDisconnect);
+  gameDevice = dev; gameHandlers = handlers;
+  await startStrokeRate(dev, handlers);
+  return { name: dev.name || 'PM5' };
+}
+
+// Connects again to the same PM5 after a drop. No picker, so it can run from
+// a plain button. Throws if the PM5 cannot be reached (for example, asleep).
+export async function reconnect() {
+  if (!gameDevice) throw new Error('No PM5 to reconnect to.');
+  await startStrokeRate(gameDevice, gameHandlers);
+  return { name: gameDevice.name || 'PM5' };
+}
+
+async function startStrokeRate(dev, handlers) {
   var server = await dev.gatt.connect();
   var svc = await server.getPrimaryService(SVC);
   try {
@@ -29,12 +47,11 @@ export async function connect(handlers) {
     await sr.writeValue(new Uint8Array([1])); // ask for updates about twice a second
   } catch (e) { /* default rate still works */ }
   var ch = await svc.getCharacteristic(CH_ADD1);
-  ch.addEventListener('characteristicvaluechanged', function (ev) {
-    var v = ev.target.value;
-    if (v.byteLength > 5) handlers.onStrokeRate(v.getUint8(5));
+  // listen() replaces any old listener, so a reconnect never doubles the packets
+  listen(ch, 'Stroke Rate', {
+    onPacket: function (name, v) { if (v.byteLength > 5) handlers.onStrokeRate(v.getUint8(5)); }
   });
   await ch.startNotifications();
-  return { name: dev.name || 'PM5' };
 }
 
 // ---- More PM5 data (used by lab.html) ----
