@@ -35,6 +35,14 @@
       </select>
       <label class="check" for="sound"><input type="checkbox" id="sound" checked> Sound</label>
     </div>
+    <!-- Shown when a workout was cut short, for example by a reload or a dead battery -->
+    <div class="resume" id="resume-box" hidden>
+      <p class="status" id="resume-text"></p>
+      <div class="row">
+        <button id="btn-continue" class="btn primary" type="button" disabled>Resume</button>
+        <button id="btn-discard" class="btn" type="button">Discard</button>
+      </div>
+    </div>
     <button id="btn-start" class="btn primary" type="button" disabled>Start workout</button>
     <dl class="plan" id="plan"></dl>
   </section>
@@ -174,6 +182,8 @@ import * as pm5 from './pm5.js';
     $('top').hidden = (id === 'game'); // no header while rowing, so the game gets the whole screen
   }
   function status(msg) { $('status').textContent = msg; }
+  // Start, and Resume for a saved workout, work once the PM5 or practice mode is ready
+  function ready(on) { $('btn-start').disabled = !on; $('btn-continue').disabled = !on; }
 
   // ---- Sound ----
   function beep(freq, dur, vol) {
@@ -193,7 +203,7 @@ import * as pm5 from './pm5.js';
   function lostToSetup() {
     spm = 0; mode = null; linkLost = false;
     status('PM5 disconnected. Press Connect PM5 to try again.');
-    $('btn-start').disabled = true;
+    ready(false);
     $('live').hidden = true;
   }
   function onDrop() {
@@ -225,7 +235,7 @@ import * as pm5 from './pm5.js';
     $('btn-connect').disabled = true;
     status('Connected to ' + pmName + '. Pull the handle and check the live rate below.');
     $('live').hidden = false;
-    $('btn-start').disabled = false;
+    ready(true);
   }
 
   $('btn-connect').addEventListener('click', async function () {
@@ -241,7 +251,7 @@ import * as pm5 from './pm5.js';
     practiceSpm = 20; spm = practiceSpm;
     $('live').hidden = true;
     status('Practice mode. You set your own rate with the arrow keys.');
-    $('btn-start').disabled = false;
+    ready(true);
   });
 
   if (!pm5.isSupported()) {
@@ -444,6 +454,7 @@ import * as pm5 from './pm5.js';
     var left = Math.ceil(p.len - inPhase);
     if (left !== lastSec) {
       lastSec = left;
+      saveProgress(el); // once a second, so a crash loses at most a second
       if (left >= 1 && left <= 3 && i < timeline.length - 1) beep(784, 0.06, 0.08);
     }
 
@@ -474,8 +485,10 @@ import * as pm5 from './pm5.js';
   async function lock() { try { wake = await navigator.wakeLock.request('screen'); } catch (e) { wake = null; } }
   function unlock() { try { if (wake) wake.release(); } catch (e) { } wake = null; }
 
-  function start() {
-    wkey = $('workout').value;
+  // from: saved progress to pick up from, or nothing for a fresh start
+  function start(from) {
+    clearProgress();
+    wkey = from ? from.workout : $('workout').value;
     timeline = buildTimeline(wkey);
     roundsTotal = wkey === 'w1s2' ? 6 : PYRAMIDS;
     setText($('h-round-label'), wkey === 'w1s2' ? 'Interval' : 'Pyramid');
@@ -485,9 +498,9 @@ import * as pm5 from './pm5.js';
       if (p.kind === 'row' && !by[p.spm]) by[p.spm] = { n: 0, on: 0 };
     });
     total = acc;
-    stats = { score: 0, darts: 0, on: 0, bulls: 0, by: by };
+    stats = from ? from.stats : { score: 0, darts: 0, on: 0, bulls: 0, by: by };
     darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1;
-    paused = false; counting = false; settleUntil = 0; snap = { i: -1 };
+    paused = false; counting = false; settleUntil = 0; snap = from ? from.snap : { i: -1 };
     showMenu(false);
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
     if (audio && audio.state === 'suspended') audio.resume();
@@ -497,6 +510,21 @@ import * as pm5 from './pm5.js';
     lock();
     running = true;
     t0 = performance.now();
+    if (from) {
+      // Set the clock as if the saved time has already passed, then wait in
+      // the pause menu so you resume when you are on the handle
+      t0 -= from.elapsed * 1000;
+      var i = 0;
+      while (i < timeline.length - 1 && from.elapsed >= timeline[i].start + timeline[i].len) i++;
+      var p = timeline[i], inPhase = from.elapsed - p.start;
+      if (p.kind === 'row') p.thrown = Math.floor((inPhase - SETTLE) / GAP); // darts already thrown in this step
+      lastPhase = i;
+      setText($('h-score'), String(stats.score));
+      setText($('h-time'), fmt(Math.ceil(p.len - inPhase)));
+      setText($('h-round'), p.round ? p.round + '/' + roundsTotal : '–');
+      pause();
+      return;
+    }
     rafId = requestAnimationFrame(frame);
   }
 
@@ -532,6 +560,7 @@ import * as pm5 from './pm5.js';
     paused = true;
     pausedAt = performance.now();
     cancelAnimationFrame(rafId); // the clock, darts and beeps all stop. The screen stays awake.
+    saveProgress((pausedAt - t0) / 1000);
     openMenu();
   }
   // Counts 3-2-1 with beeps, then the clock moves on from where it stopped
@@ -577,6 +606,7 @@ import * as pm5 from './pm5.js';
   function finish() {
     clearTimeout(countdownTimer); paused = false; counting = false;
     if (linkLost) lostToSetup(); // the start screen should say the PM5 is gone
+    clearProgress();             // finished or ended on purpose, so nothing to resume
     running = false; cancelAnimationFrame(rafId); unlock();
     if (stats.darts > 0) beep(1047, 0.35, 0.12);
     var pct = stats.darts ? Math.round(stats.on / stats.darts * 100) : 0;
@@ -617,7 +647,35 @@ import * as pm5 from './pm5.js';
   $('workout').addEventListener('change', function () { showPlan(); saveChoice(); });
   showPlan();
 
-  $('btn-start').addEventListener('click', start);
+  // ---- Saved progress ----
+  // While rowing, the workout saves its place every second and on every pause.
+  // If the page reloads or the laptop dies, the start screen offers to pick up there.
+  var SESSION_KEY = 'erg-games-session';
+  var MAX_AGE = 12 * 60 * 60 * 1000; // older than 12 hours is not the same session
+  var saved = null;
+  function saveProgress(el) {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify({ workout: wkey, elapsed: el, stats: stats, snap: snap, savedAt: Date.now() })); } catch (e) { }
+  }
+  function clearProgress() {
+    saved = null;
+    $('resume-box').hidden = true;
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) { }
+  }
+  try {
+    var s = JSON.parse(localStorage.getItem(SESSION_KEY));
+    if (s && INFO[s.workout] && Date.now() - s.savedAt < MAX_AGE) saved = s;
+  } catch (e) { }
+  if (saved) {
+    var at = fmt(Math.floor(saved.elapsed));
+    $('resume-text').textContent = 'Unfinished workout: ' + INFO[saved.workout].eyebrow + ', stopped at ' + at + '.';
+    $('btn-continue').textContent = 'Resume at ' + at;
+    $('resume-box').hidden = false;
+  }
+  $('btn-continue').addEventListener('click', function () { if (saved) start(saved); });
+  $('btn-discard').addEventListener('click', clearProgress);
+
+  // Wrapped, so the click event is not passed in as saved progress
+  $('btn-start').addEventListener('click', function () { start(); });
   $('btn-pause').addEventListener('click', togglePause);
   $('btn-resume').addEventListener('click', resume);
   // Reach the same PM5 again, with no device picker

@@ -66,6 +66,9 @@ select { font: inherit; background: var(--bg); color: var(--ink); border: 2px so
 .plan { margin: 0; padding: 12px 0 0; border-top: 2px solid var(--line); display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; font-size: 13px; }
 .plan dt { font-weight: 500; font-variant-numeric: tabular-nums; }
 .plan dd { margin: 0; color: var(--ink-soft); }
+.resume { border: 2px solid var(--ink); border-radius: 4px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.resume[hidden] { display: none; }
+.resume .status { min-height: 0; }
 .live { margin: 0; font-weight: 500; }
 .live strong { font-family: var(--font-display); font-size: 22px; }
 
