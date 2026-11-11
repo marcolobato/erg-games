@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="wrap">
-  <header>
+  <header id="top">
     <p class="eyebrow" id="eyebrow">Week 1 · Session 2</p>
     <h1>Pyramid Darts</h1>
     <p class="lede">Hold each stroke rate and your darts land on the bull.</p>
@@ -45,26 +45,37 @@
       <div class="cell"><div class="label">Score</div><div class="value" id="h-score">0</div></div>
       <div class="cell"><div class="label">Step left</div><div class="value" id="h-time">0:00</div></div>
       <div class="cell"><div class="label" id="h-round-label">Interval</div><div class="value" id="h-round">–</div></div>
+      <!-- One corner button: pause while rowing, resume while paused -->
+      <button id="btn-pause" class="btn icon" type="button" aria-label="Pause">
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      </button>
     </div>
     <div>
       <div class="phase-label" id="phase-label">GET READY</div>
       <p class="phase-sub" id="phase-sub"></p>
     </div>
-    <div class="board-wrap"><canvas id="board" role="img" aria-label="Dart board. Your stroke rate moves the crosshair up when you are too fast and down when you are too slow."></canvas></div>
-    <div class="readout">
-      <div><div class="label">Target</div><div class="big"><span id="r-target">–</span> <small>spm</small></div></div>
-      <div><div class="label">You</div><div class="big"><span id="r-you">0</span> <small>spm</small></div></div>
+    <!-- What you see while rowing. Hidden while paused. -->
+    <div class="stack" id="playing">
+      <div class="board-wrap"><canvas id="board" role="img" aria-label="Dart board. Your stroke rate moves the crosshair up when you are too fast and down when you are too slow."></canvas></div>
+      <div class="readout">
+        <div><div class="label">Target</div><div class="big"><span id="r-target">–</span> <small>spm</small></div></div>
+        <div><div class="label">You</div><div class="big"><span id="r-you">0</span> <small>spm</small></div></div>
+      </div>
+      <div class="delta" id="delta" aria-live="polite"></div>
+      <div class="practice" id="practice" hidden>
+        <button class="btn" id="btn-down" type="button" aria-label="Lower stroke rate">−</button>
+        <span>Practice: use the arrow keys or these buttons to set your rate.</span>
+        <button class="btn" id="btn-up" type="button" aria-label="Raise stroke rate">+</button>
+      </div>
+      <p class="note" id="link"></p>
     </div>
-    <div class="delta" id="delta" aria-live="polite"></div>
-    <div class="practice" id="practice" hidden>
-      <button class="btn" id="btn-down" type="button" aria-label="Lower stroke rate">−</button>
-      <span>Practice: use the arrow keys or these buttons to set your rate.</span>
-      <button class="btn" id="btn-up" type="button" aria-label="Raise stroke rate">+</button>
-    </div>
-    <p class="note" id="link"></p>
-    <div class="row">
+    <!-- The pause menu. More options (like mute) can be added here later. -->
+    <div class="stack menu" id="menu" hidden>
+      <button id="btn-resume" class="btn primary" type="button">Resume</button>
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
       <button id="btn-end" class="btn" type="button">End workout</button>
+      <p class="note">Space or Esc also pauses and resumes.</p>
     </div>
   </section>
 
@@ -146,11 +157,17 @@ import * as pm5 from './pm5.js';
   var timeline = [], roundsTotal = 6, wkey = 'w1s2', lastPhase = -1, lastSec = -1;
   var darts = [], popups = [], aimErr = 0, stats = null;
   var audio = null, wake = null, pmName = '';
+  var paused = false, pausedAt = 0;          // pausedAt: the clock time when Pause was pressed
+  var counting = false, countdownTimer = 0;  // the 3-2-1 before rowing again
+  var settleUntil = 0;                       // no darts until this many seconds into the workout
 
   // ---- Helpers ----
   function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
   function fmt(sec) { var m = Math.floor(sec / 60), s = sec % 60; return m + ':' + (s < 10 ? '0' : '') + s; }
-  function show(id) { ['setup', 'game', 'results'].forEach(function (k) { $(k).hidden = (k !== id); }); }
+  function show(id) {
+    ['setup', 'game', 'results'].forEach(function (k) { $(k).hidden = (k !== id); });
+    $('top').hidden = (id === 'game'); // no header while rowing, so the game gets the whole screen
+  }
   function status(msg) { $('status').textContent = msg; }
 
   // ---- Sound ----
@@ -232,6 +249,10 @@ import * as pm5 from './pm5.js';
   $('btn-down').addEventListener('click', function () { nudge(-1); });
   document.addEventListener('keydown', function (e) {
     if (!running) return;
+    // Space or Esc pauses and resumes. If a button has focus, Space presses
+    // that button instead, so we let the browser handle it.
+    var onButton = e.target.tagName === 'BUTTON';
+    if (e.key === 'Escape' || (e.key === ' ' && !onButton)) { e.preventDefault(); togglePause(); return; }
     if (e.key === 'ArrowUp') { e.preventDefault(); nudge(1); }
     if (e.key === 'ArrowDown') { e.preventDefault(); nudge(-1); }
   });
@@ -256,7 +277,7 @@ import * as pm5 from './pm5.js';
   new ResizeObserver(fit).observe(cv);
   var EASE = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 0.25;
 
-  function draw(p, now, inPhase) {
+  function draw(p, now, inPhase, waiting) {
     fit();
     var s = size; if (!s) return;
     ctx.clearRect(0, 0, s, s);
@@ -324,7 +345,7 @@ import * as pm5 from './pm5.js';
     aimErr += (target - aimErr) * EASE;
     var ay = cy - aimErr * u;
     ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
-    ctx.setLineDash(p.kind === 'row' && inPhase < SETTLE ? [3, 3] : []);
+    ctx.setLineDash(waiting ? [3, 3] : []); // dashed while darts are on hold
     ctx.beginPath(); ctx.arc(cx, ay, 10, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
     ctx.beginPath();
@@ -391,7 +412,7 @@ import * as pm5 from './pm5.js';
 
   // ---- Main loop ----
   function frame(now) {
-    if (!running) return;
+    if (!running || paused) return;
     var el = (now - t0) / 1000;
     if (el >= total) { finish(); return; }
     var i = 0;
@@ -399,7 +420,9 @@ import * as pm5 from './pm5.js';
     var p = timeline[i], inPhase = el - p.start;
     if (i !== lastPhase) { lastPhase = i; onPhase(p, i); }
 
-    if (p.kind === 'row' && inPhase >= SETTLE) {
+    // Darts wait 4 s at the start of each step, and again after a pause
+    var waiting = p.kind === 'row' && (inPhase < SETTLE || el < settleUntil);
+    if (p.kind === 'row' && !waiting) {
       var k = Math.floor((inPhase - SETTLE) / GAP);
       if (k > p.thrown) { p.thrown = k; throwDart(p, now); }
     }
@@ -429,8 +452,7 @@ import * as pm5 from './pm5.js';
     setText(d, txt);
     d.classList.toggle('hit', hit);
 
-    $('btn-skip').hidden = (p.kind !== 'warm');
-    draw(p, now, inPhase);
+    draw(p, now, inPhase, waiting);
     rafId = requestAnimationFrame(frame);
   }
 
@@ -451,6 +473,8 @@ import * as pm5 from './pm5.js';
     total = acc;
     stats = { score: 0, darts: 0, on: 0, bulls: 0, by: by };
     darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1;
+    paused = false; counting = false; settleUntil = 0;
+    showMenu(false);
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
     if (audio && audio.state === 'suspended') audio.resume();
     $('practice').hidden = (mode !== 'practice');
@@ -462,7 +486,61 @@ import * as pm5 from './pm5.js';
     rafId = requestAnimationFrame(frame);
   }
 
+  // ---- Pause / resume ----
+  function phaseName(p) {
+    return p.kind === 'row' ? 'Row at ' + p.spm : { warm: 'Warm-up', paddle: 'Paddle', cool: 'Cool down' }[p.kind];
+  }
+  // Shows either the pause menu or the rowing view
+  function showMenu(on) {
+    $('menu').hidden = !on;
+    $('playing').hidden = on;
+    $('btn-pause').classList.toggle('is-paused', on);
+    $('btn-pause').setAttribute('aria-label', on ? 'Resume' : 'Pause');
+  }
+  function openMenu() {
+    var p = timeline[lastPhase], el = Math.floor((pausedAt - t0) / 1000);
+    setText($('phase-label'), 'PAUSED');
+    setText($('phase-sub'), fmt(el) + ' of ' + fmt(total) + ' · ' + phaseName(p));
+    $('btn-skip').hidden = (p.kind !== 'warm');
+    showMenu(true);
+    $('btn-resume').focus(); // so Space or Enter resumes right away
+  }
+  function pause() {
+    paused = true;
+    pausedAt = performance.now();
+    cancelAnimationFrame(rafId); // the clock, darts and beeps all stop. The screen stays awake.
+    openMenu();
+  }
+  // Counts 3-2-1 with beeps, then the clock moves on from where it stopped
+  function resume() {
+    counting = true;
+    showMenu(false); // the corner button shows Pause again, and can stop the countdown
+    var n = 3;
+    (function tick() {
+      if (n > 0) {
+        setText($('phase-label'), String(n));
+        setText($('phase-sub'), 'Get ready to row');
+        beep(784, 0.08, 0.1);
+        n--;
+        countdownTimer = setTimeout(tick, 1000);
+        return;
+      }
+      counting = false; paused = false;
+      t0 += performance.now() - pausedAt;                       // skip over the paused time
+      settleUntil = (performance.now() - t0) / 1000 + SETTLE;   // a few seconds to get back up to rate
+      lastPhase = -1;                                           // shows the step label again
+      rafId = requestAnimationFrame(frame);
+    })();
+  }
+  function togglePause() {
+    if (!running) return;
+    if (!paused) pause();
+    else if (counting) { clearTimeout(countdownTimer); counting = false; openMenu(); } // stop the countdown
+    else resume();
+  }
+
   function finish() {
+    clearTimeout(countdownTimer); paused = false; counting = false;
     running = false; cancelAnimationFrame(rafId); unlock();
     if (stats.darts > 0) beep(1047, 0.35, 0.12);
     var pct = stats.darts ? Math.round(stats.on / stats.darts * 100) : 0;
@@ -504,9 +582,12 @@ import * as pm5 from './pm5.js';
   showPlan();
 
   $('btn-start').addEventListener('click', start);
+  $('btn-pause').addEventListener('click', togglePause);
+  $('btn-resume').addEventListener('click', resume);
   $('btn-end').addEventListener('click', finish);
+  // From the pause menu: jump to the end of the warm-up, then count in
   $('btn-skip').addEventListener('click', function () {
-    if (running && timeline[1]) t0 = performance.now() - timeline[1].start * 1000;
+    if (running && paused && timeline[1]) { t0 = pausedAt - timeline[1].start * 1000; resume(); }
   });
   $('btn-again').addEventListener('click', function () { show('setup'); });
 })();
