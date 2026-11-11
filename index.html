@@ -566,6 +566,14 @@ import * as pm5 from './pm5.js';
     else if (!linkLost) resume(); // no resuming without the PM5
   }
 
+  // Leaving the page (another tab, a locked phone) pauses the workout.
+  // Coming back asks for the screen lock again, since the browser drops it.
+  document.addEventListener('visibilitychange', function () {
+    if (!running) return;
+    if (document.hidden) { if (!paused || counting) holdInMenu(); }
+    else lock();
+  });
+
   function finish() {
     clearTimeout(countdownTimer); paused = false; counting = false;
     if (linkLost) lostToSetup(); // the start screen should say the PM5 is gone
