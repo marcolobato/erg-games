@@ -43,6 +43,7 @@ Design lesson: a game for rowing should reward the thing the workout asks for. I
 - Two workouts built in, named by code only: Week 1 Session 2 (W1S2, default) and Week 1 Session 1 (W1S1).
 - Fonts: JetBrains Mono for numbers and headings, IBM Plex Mono for small text. Own colors on purpose, inspired by the PM5 screen.
 - Game: Pyramid Darts. A crosshair moves up when stroke rate is too high and down when too low. A dart lands every 2 seconds.
+- Protecting the session (branch `pause-resume`, tested headless with a pretend PM5, not yet rowed): a corner pause button and Space/Esc open a pause menu (Resume with a 3-2-1 count-in, Restart step, Skip warm-up, End workout). The game also pauses itself when the PM5 drops (Reconnect reaches the same PM5 without the picker) or the page is hidden. Progress is saved every second, so after a reload the start screen offers "Resume at 7:32".
 
 ## What is verified and what is not
 
