@@ -35,7 +35,14 @@ export async function connect(handlers) {
 // a plain button. Throws if the PM5 cannot be reached (for example, asleep).
 export async function reconnect() {
   if (!gameDevice) throw new Error('No PM5 to reconnect to.');
-  await startStrokeRate(gameDevice, gameHandlers);
+  // The browser can wait forever for a PM5 that is not listening,
+  // so give up after 10 seconds and let the page say so.
+  var timer;
+  var giveUp = new Promise(function (resolve, reject) {
+    timer = setTimeout(function () { reject(new Error('The PM5 did not answer.')); }, 10000);
+  });
+  try { await Promise.race([startStrokeRate(gameDevice, gameHandlers), giveUp]); }
+  finally { clearTimeout(timer); }
   return { name: gameDevice.name || 'PM5' };
 }
 
