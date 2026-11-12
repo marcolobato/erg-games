@@ -220,6 +220,8 @@ import * as pm5 from './pm5.js';
     } else lostToSetup();
   }
 
+  var BT_OFF = 'Bluetooth is off on this device. Turn it on and try again.';
+
   async function connectPM5() {
     status('Pick your PM5 from the list. Wake it up first by pulling the handle.');
     var pm = await pm5.connect({
@@ -243,8 +245,10 @@ import * as pm5 from './pm5.js';
   $('btn-connect').addEventListener('click', async function () {
     try { await connectPM5(); }
     catch (e) {
-      if (e && e.name === 'NotFoundError') status('No PM5 picked. Press Connect PM5 to try again.');
-      else status('Could not connect: ' + (e && e.message ? e.message : e) + ' If another app is connected to the PM5, close it and try again.');
+      // Bluetooth off comes first: Chrome reports it like a closed picker
+      if (await pm5.isBluetoothOff(e)) status(BT_OFF);
+      else if (e && e.name === 'NotFoundError') status('No PM5 picked. Press Connect PM5 to try again.');
+      else status('Could not connect. Check that Bluetooth is on, wake the PM5 by pulling the handle, and close other apps that use it, like ErgData. (' + (e && e.message ? e.message : e) + ')');
     }
   });
 
@@ -698,6 +702,7 @@ import * as pm5 from './pm5.js';
       $('btn-connect').disabled = true;
       openMenu(); // Resume is back
     } catch (e) {
+      if (await pm5.isBluetoothOff(e)) { setText($('menu-msg'), BT_OFF); return; } // the list can't help until it's on
       setText($('menu-msg'), 'Could not reconnect. Pull the handle to wake the PM5, then try again, or choose it from the list.');
       $('btn-pick').hidden = false;
     } finally {
@@ -713,7 +718,8 @@ import * as pm5 from './pm5.js';
       linkLost = false;
       openMenu(); // Resume is back
     } catch (e) {
-      setText($('menu-msg'), 'Could not connect. Pull the handle to wake the PM5, then try again.');
+      if (await pm5.isBluetoothOff(e)) setText($('menu-msg'), BT_OFF);
+      else if (!(e && e.name === 'NotFoundError')) setText($('menu-msg'), 'Could not connect. Pull the handle to wake the PM5, then try again.');
     }
   });
   $('btn-end').addEventListener('click', finish);

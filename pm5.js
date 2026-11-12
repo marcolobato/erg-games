@@ -12,6 +12,17 @@ export function isSupported() {
   return !!navigator.bluetooth;
 }
 
+// Call after a connect fails: true if Bluetooth is switched off on this device.
+// Browsers word this differently (Chrome says "adapter not available"), so check
+// the error text, then ask the browser directly where it can answer.
+export async function isBluetoothOff(err) {
+  if (err && /adapter|powered off|turned off|bluetooth is off|unavailable/i.test(err.message || '')) return true;
+  try {
+    if (navigator.bluetooth && navigator.bluetooth.getAvailability) return !(await navigator.bluetooth.getAvailability());
+  } catch (e) { /* this browser can't tell */ }
+  return false;
+}
+
 // The PM5 picked in connect(), kept so reconnect() can reach it again
 // without opening the device picker.
 var gameDevice = null, gameHandlers = null;
