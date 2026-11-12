@@ -86,7 +86,7 @@
       <button id="btn-restart" class="btn" type="button">Restart step</button>
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
       <button id="btn-end" class="btn" type="button">End workout</button>
-      <p class="note">Space or Esc also pauses and resumes.</p>
+      <p class="note" id="menu-hint">Space or Esc also pauses and resumes.</p>
     </div>
   </section>
 
@@ -538,6 +538,9 @@ import * as pm5 from './pm5.js';
     $('playing').hidden = on;
     $('btn-pause').classList.toggle('is-paused', on);
     $('btn-pause').setAttribute('aria-label', on ? 'Resume' : 'Pause');
+    // Without the PM5 you can't resume, so grey out the corner button and drop the key hint
+    $('btn-pause').disabled = on && linkLost;
+    $('menu-hint').hidden = on && linkLost;
   }
   function openMenu() {
     var p = timeline[lastPhase], el = Math.floor((pausedAt - t0) / 1000);
