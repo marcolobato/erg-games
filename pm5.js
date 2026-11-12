@@ -25,6 +25,8 @@ export async function connect(handlers) {
     filters: [{ namePrefix: 'PM5' }],
     optionalServices: [SVC]
   });
+  // Picking the same PM5 again must not add a second "disconnected" listener
+  if (gameDevice) gameDevice.removeEventListener('gattserverdisconnected', gameHandlers.onDisconnect);
   dev.addEventListener('gattserverdisconnected', handlers.onDisconnect);
   gameDevice = dev; gameHandlers = handlers;
   await startStrokeRate(dev, handlers);

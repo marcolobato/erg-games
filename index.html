@@ -82,6 +82,8 @@
     <div class="stack menu" id="menu" hidden>
       <p class="status" id="menu-msg" hidden></p>
       <button id="btn-reconnect" class="btn primary" type="button" hidden>Reconnect PM5</button>
+      <!-- Backup after a failed reconnect: the device picker, like on the start screen -->
+      <button id="btn-pick" class="btn" type="button" hidden>Choose PM5 again</button>
       <button id="btn-resume" class="btn primary" type="button">Resume</button>
       <button id="btn-restart" class="btn" type="button">Restart step</button>
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
@@ -552,6 +554,7 @@ import * as pm5 from './pm5.js';
     $('menu-msg').hidden = !linkLost;
     $('btn-reconnect').hidden = !linkLost;
     $('btn-resume').hidden = linkLost;
+    $('btn-pick').hidden = true; // only shown after a reconnect fails
     if (linkLost) {
       setText($('menu-msg'), 'PM5 disconnected. Pull the handle to wake it, then press Reconnect.');
       $('btn-restart').hidden = true; $('btn-skip').hidden = true;
@@ -695,10 +698,22 @@ import * as pm5 from './pm5.js';
       $('btn-connect').disabled = true;
       openMenu(); // Resume is back
     } catch (e) {
-      setText($('menu-msg'), 'Could not reconnect. Pull the handle to wake the PM5, then try again.');
+      setText($('menu-msg'), 'Could not reconnect. Pull the handle to wake the PM5, then try again, or choose it from the list.');
+      $('btn-pick').hidden = false;
     } finally {
       btn.disabled = false; // runs even after the early return above
       btn.textContent = 'Reconnect PM5';
+    }
+  });
+  // The backup: pick the PM5 from the browser's list. The workout stays where it was.
+  $('btn-pick').addEventListener('click', async function () {
+    try {
+      await connectPM5();
+      if (!running) return;
+      linkLost = false;
+      openMenu(); // Resume is back
+    } catch (e) {
+      setText($('menu-msg'), 'Could not connect. Pull the handle to wake the PM5, then try again.');
     }
   });
   $('btn-end').addEventListener('click', finish);
