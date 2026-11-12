@@ -66,10 +66,24 @@ select { font: inherit; background: var(--bg); color: var(--ink); border: 2px so
 .plan { margin: 0; padding: 12px 0 0; border-top: 2px solid var(--line); display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; font-size: 13px; }
 .plan dt { font-weight: 500; font-variant-numeric: tabular-nums; }
 .plan dd { margin: 0; color: var(--ink-soft); }
+.resume { border: 2px solid var(--ink); border-radius: 4px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.resume[hidden] { display: none; }
+.resume .status { min-height: 0; }
 .live { margin: 0; font-weight: 500; }
 .live strong { font-family: var(--font-display); font-size: 22px; }
 
 .hud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+#game { min-height: calc(100dvh - 48px); } /* fills the screen, so pausing does not make it jump */
+#game .hud { grid-template-columns: repeat(3, 1fr) auto; align-items: center; } /* 4th column: the pause button */
+/* Square icon button, big enough to hit from the seat */
+.btn.icon { width: 56px; height: 56px; padding: 0; display: grid; place-items: center; }
+.btn.icon svg { width: 24px; height: 24px; fill: currentColor; }
+.btn.icon .i-play, .btn.icon.is-paused .i-pause { display: none; }
+.btn.icon.is-paused .i-play { display: block; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.stack[hidden] { display: none; }
+.menu .btn { min-height: 64px; }
+@media (max-width: 400px) { #game .value { font-size: 28px; } } /* keeps "1:12" from overflowing next to the button */
 .cell { min-width: 0; }
 .label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
 .value { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1.1; font-variant-numeric: tabular-nums; }

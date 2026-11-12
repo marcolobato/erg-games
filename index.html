@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="wrap">
-  <header>
+  <header id="top">
     <p class="eyebrow" id="eyebrow">Week 1 · Session 2</p>
     <h1>Pyramid Darts</h1>
     <p class="lede">Hold each stroke rate and your darts land on the bull.</p>
@@ -35,6 +35,14 @@
       </select>
       <label class="check" for="sound"><input type="checkbox" id="sound" checked> Sound</label>
     </div>
+    <!-- Shown when a workout was cut short, for example by a reload or a dead battery -->
+    <div class="resume" id="resume-box" hidden>
+      <p class="status" id="resume-text"></p>
+      <div class="row">
+        <button id="btn-continue" class="btn primary" type="button" disabled>Resume</button>
+        <button id="btn-discard" class="btn" type="button">Discard</button>
+      </div>
+    </div>
     <button id="btn-start" class="btn primary" type="button" disabled>Start workout</button>
     <dl class="plan" id="plan"></dl>
   </section>
@@ -45,26 +53,42 @@
       <div class="cell"><div class="label">Score</div><div class="value" id="h-score">0</div></div>
       <div class="cell"><div class="label">Step left</div><div class="value" id="h-time">0:00</div></div>
       <div class="cell"><div class="label" id="h-round-label">Interval</div><div class="value" id="h-round">–</div></div>
+      <!-- One corner button: pause while rowing, resume while paused -->
+      <button id="btn-pause" class="btn icon" type="button" aria-label="Pause">
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      </button>
     </div>
     <div>
       <div class="phase-label" id="phase-label">GET READY</div>
       <p class="phase-sub" id="phase-sub"></p>
     </div>
-    <div class="board-wrap"><canvas id="board" role="img" aria-label="Dart board. Your stroke rate moves the crosshair up when you are too fast and down when you are too slow."></canvas></div>
-    <div class="readout">
-      <div><div class="label">Target</div><div class="big"><span id="r-target">–</span> <small>spm</small></div></div>
-      <div><div class="label">You</div><div class="big"><span id="r-you">0</span> <small>spm</small></div></div>
+    <!-- What you see while rowing. Hidden while paused. -->
+    <div class="stack" id="playing">
+      <div class="board-wrap"><canvas id="board" role="img" aria-label="Dart board. Your stroke rate moves the crosshair up when you are too fast and down when you are too slow."></canvas></div>
+      <div class="readout">
+        <div><div class="label">Target</div><div class="big"><span id="r-target">–</span> <small>spm</small></div></div>
+        <div><div class="label">You</div><div class="big"><span id="r-you">0</span> <small>spm</small></div></div>
+      </div>
+      <div class="delta" id="delta" aria-live="polite"></div>
+      <div class="practice" id="practice" hidden>
+        <button class="btn" id="btn-down" type="button" aria-label="Lower stroke rate">−</button>
+        <span>Practice: use the arrow keys or these buttons to set your rate.</span>
+        <button class="btn" id="btn-up" type="button" aria-label="Raise stroke rate">+</button>
+      </div>
+      <p class="note" id="link"></p>
     </div>
-    <div class="delta" id="delta" aria-live="polite"></div>
-    <div class="practice" id="practice" hidden>
-      <button class="btn" id="btn-down" type="button" aria-label="Lower stroke rate">−</button>
-      <span>Practice: use the arrow keys or these buttons to set your rate.</span>
-      <button class="btn" id="btn-up" type="button" aria-label="Raise stroke rate">+</button>
-    </div>
-    <p class="note" id="link"></p>
-    <div class="row">
+    <!-- The pause menu. More options (like mute) can be added here later. -->
+    <div class="stack menu" id="menu" hidden>
+      <p class="status" id="menu-msg" hidden></p>
+      <button id="btn-reconnect" class="btn primary" type="button" hidden>Reconnect PM5</button>
+      <!-- Backup after a failed reconnect: the device picker, like on the start screen -->
+      <button id="btn-pick" class="btn" type="button" hidden>Choose PM5 again</button>
+      <button id="btn-resume" class="btn primary" type="button">Resume</button>
+      <button id="btn-restart" class="btn" type="button">Restart step</button>
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
       <button id="btn-end" class="btn" type="button">End workout</button>
+      <p class="note" id="menu-hint">Space or Esc also pauses and resumes.</p>
     </div>
   </section>
 
@@ -146,12 +170,22 @@ import * as pm5 from './pm5.js';
   var timeline = [], roundsTotal = 6, wkey = 'w1s2', lastPhase = -1, lastSec = -1;
   var darts = [], popups = [], aimErr = 0, stats = null;
   var audio = null, wake = null, pmName = '';
+  var paused = false, pausedAt = 0;          // pausedAt: the clock time when Pause was pressed
+  var counting = false, countdownTimer = 0;  // the 3-2-1 before rowing again
+  var settleUntil = 0;                       // no darts until this many seconds into the workout
+  var snap = { i: -1 };                      // the score when the current step began, for Restart step
+  var linkLost = false;                      // true while the PM5 is gone in the middle of a workout
 
   // ---- Helpers ----
   function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
   function fmt(sec) { var m = Math.floor(sec / 60), s = sec % 60; return m + ':' + (s < 10 ? '0' : '') + s; }
-  function show(id) { ['setup', 'game', 'results'].forEach(function (k) { $(k).hidden = (k !== id); }); }
+  function show(id) {
+    ['setup', 'game', 'results'].forEach(function (k) { $(k).hidden = (k !== id); });
+    $('top').hidden = (id === 'game'); // no header while rowing, so the game gets the whole screen
+  }
   function status(msg) { $('status').textContent = msg; }
+  // Start, and Resume for a saved workout, work once the PM5 or practice mode is ready
+  function ready(on) { $('btn-start').disabled = !on; $('btn-continue').disabled = !on; }
 
   // ---- Sound ----
   function beep(freq, dur, vol) {
@@ -167,18 +201,23 @@ import * as pm5 from './pm5.js';
   var NOTE = { 22: 466, 24: 523, 26: 587, 28: 659 };
 
   // ---- PM5 connection ----
+  // Back to "not connected" on the start screen
+  function lostToSetup() {
+    spm = 0; mode = null; linkLost = false;
+    status('PM5 disconnected. Press Connect PM5 to try again.');
+    ready(false);
+    $('live').hidden = true;
+  }
   function onDrop() {
     // The PM5 is gone, so the button offers to connect again
     $('btn-connect').textContent = 'Connect PM5';
     $('btn-connect').disabled = false;
-    if (mode === 'pm5') {
-      spm = 0;
-      setText($('link'), 'PM5 connection lost. Reconnect from the start screen.');
-      status('PM5 disconnected. Press Connect PM5 to try again.');
-      $('btn-start').disabled = true;
-      $('live').hidden = true;
-      mode = null;
-    }
+    if (mode !== 'pm5') return;
+    if (running) {
+      // Mid-workout: freeze the clock and offer to reconnect, so the session is not lost
+      spm = 0; linkLost = true;
+      holdInMenu();
+    } else lostToSetup();
   }
 
   async function connectPM5() {
@@ -198,7 +237,7 @@ import * as pm5 from './pm5.js';
     $('btn-connect').disabled = true;
     status('Connected to ' + pmName + '. Pull the handle and check the live rate below.');
     $('live').hidden = false;
-    $('btn-start').disabled = false;
+    ready(true);
   }
 
   $('btn-connect').addEventListener('click', async function () {
@@ -214,7 +253,7 @@ import * as pm5 from './pm5.js';
     practiceSpm = 20; spm = practiceSpm;
     $('live').hidden = true;
     status('Practice mode. You set your own rate with the arrow keys.');
-    $('btn-start').disabled = false;
+    ready(true);
   });
 
   if (!pm5.isSupported()) {
@@ -232,6 +271,10 @@ import * as pm5 from './pm5.js';
   $('btn-down').addEventListener('click', function () { nudge(-1); });
   document.addEventListener('keydown', function (e) {
     if (!running) return;
+    // Space or Esc pauses and resumes. If a button has focus, Space presses
+    // that button instead, so we let the browser handle it.
+    var onButton = e.target.tagName === 'BUTTON';
+    if (e.key === 'Escape' || (e.key === ' ' && !onButton)) { e.preventDefault(); togglePause(); return; }
     if (e.key === 'ArrowUp') { e.preventDefault(); nudge(1); }
     if (e.key === 'ArrowDown') { e.preventDefault(); nudge(-1); }
   });
@@ -256,7 +299,7 @@ import * as pm5 from './pm5.js';
   new ResizeObserver(fit).observe(cv);
   var EASE = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 0.25;
 
-  function draw(p, now, inPhase) {
+  function draw(p, now, inPhase, waiting) {
     fit();
     var s = size; if (!s) return;
     ctx.clearRect(0, 0, s, s);
@@ -324,7 +367,7 @@ import * as pm5 from './pm5.js';
     aimErr += (target - aimErr) * EASE;
     var ay = cy - aimErr * u;
     ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
-    ctx.setLineDash(p.kind === 'row' && inPhase < SETTLE ? [3, 3] : []);
+    ctx.setLineDash(waiting ? [3, 3] : []); // dashed while darts are on hold
     ctx.beginPath(); ctx.arc(cx, ay, 10, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
     ctx.beginPath();
@@ -391,15 +434,21 @@ import * as pm5 from './pm5.js';
 
   // ---- Main loop ----
   function frame(now) {
-    if (!running) return;
+    if (!running || paused) return;
     var el = (now - t0) / 1000;
     if (el >= total) { finish(); return; }
     var i = 0;
     while (i < timeline.length - 1 && el >= timeline[i].start + timeline[i].len) i++;
     var p = timeline[i], inPhase = el - p.start;
-    if (i !== lastPhase) { lastPhase = i; onPhase(p, i); }
+    if (i !== lastPhase) {
+      // Only a new step gets a snapshot, not a resume in the middle of one
+      if (i !== snap.i) snap = { i: i, score: stats.score, darts: stats.darts, on: stats.on, bulls: stats.bulls, by: JSON.stringify(stats.by), drawn: darts.length };
+      lastPhase = i; onPhase(p, i);
+    }
 
-    if (p.kind === 'row' && inPhase >= SETTLE) {
+    // Darts wait 4 s at the start of each step, and again after a pause
+    var waiting = p.kind === 'row' && (inPhase < SETTLE || el < settleUntil);
+    if (p.kind === 'row' && !waiting) {
       var k = Math.floor((inPhase - SETTLE) / GAP);
       if (k > p.thrown) { p.thrown = k; throwDart(p, now); }
     }
@@ -407,6 +456,7 @@ import * as pm5 from './pm5.js';
     var left = Math.ceil(p.len - inPhase);
     if (left !== lastSec) {
       lastSec = left;
+      saveProgress(el); // once a second, so a crash loses at most a second
       if (left >= 1 && left <= 3 && i < timeline.length - 1) beep(784, 0.06, 0.08);
     }
 
@@ -429,8 +479,7 @@ import * as pm5 from './pm5.js';
     setText(d, txt);
     d.classList.toggle('hit', hit);
 
-    $('btn-skip').hidden = (p.kind !== 'warm');
-    draw(p, now, inPhase);
+    draw(p, now, inPhase, waiting);
     rafId = requestAnimationFrame(frame);
   }
 
@@ -438,8 +487,10 @@ import * as pm5 from './pm5.js';
   async function lock() { try { wake = await navigator.wakeLock.request('screen'); } catch (e) { wake = null; } }
   function unlock() { try { if (wake) wake.release(); } catch (e) { } wake = null; }
 
-  function start() {
-    wkey = $('workout').value;
+  // from: saved progress to pick up from, or nothing for a fresh start
+  function start(from) {
+    clearProgress();
+    wkey = from ? from.workout : $('workout').value;
     timeline = buildTimeline(wkey);
     roundsTotal = wkey === 'w1s2' ? 6 : PYRAMIDS;
     setText($('h-round-label'), wkey === 'w1s2' ? 'Interval' : 'Pyramid');
@@ -449,8 +500,10 @@ import * as pm5 from './pm5.js';
       if (p.kind === 'row' && !by[p.spm]) by[p.spm] = { n: 0, on: 0 };
     });
     total = acc;
-    stats = { score: 0, darts: 0, on: 0, bulls: 0, by: by };
+    stats = from ? from.stats : { score: 0, darts: 0, on: 0, bulls: 0, by: by };
     darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1;
+    paused = false; counting = false; settleUntil = 0; snap = from ? from.snap : { i: -1 };
+    showMenu(false);
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
     if (audio && audio.state === 'suspended') audio.resume();
     $('practice').hidden = (mode !== 'practice');
@@ -459,10 +512,107 @@ import * as pm5 from './pm5.js';
     lock();
     running = true;
     t0 = performance.now();
+    if (from) {
+      // Set the clock as if the saved time has already passed, then wait in
+      // the pause menu so you resume when you are on the handle
+      t0 -= from.elapsed * 1000;
+      var i = 0;
+      while (i < timeline.length - 1 && from.elapsed >= timeline[i].start + timeline[i].len) i++;
+      var p = timeline[i], inPhase = from.elapsed - p.start;
+      if (p.kind === 'row') p.thrown = Math.floor((inPhase - SETTLE) / GAP); // darts already thrown in this step
+      lastPhase = i;
+      setText($('h-score'), String(stats.score));
+      setText($('h-time'), fmt(Math.ceil(p.len - inPhase)));
+      setText($('h-round'), p.round ? p.round + '/' + roundsTotal : '–');
+      pause();
+      return;
+    }
     rafId = requestAnimationFrame(frame);
   }
 
+  // ---- Pause / resume ----
+  function phaseName(p) {
+    return p.kind === 'row' ? 'Row at ' + p.spm : { warm: 'Warm-up', paddle: 'Paddle', cool: 'Cool down' }[p.kind];
+  }
+  // Shows either the pause menu or the rowing view
+  function showMenu(on) {
+    $('menu').hidden = !on;
+    $('playing').hidden = on;
+    $('btn-pause').classList.toggle('is-paused', on);
+    $('btn-pause').setAttribute('aria-label', on ? 'Resume' : 'Pause');
+    // Without the PM5 you can't resume, so grey out the corner button and drop the key hint
+    $('btn-pause').disabled = on && linkLost;
+    $('menu-hint').hidden = on && linkLost;
+  }
+  function openMenu() {
+    var p = timeline[lastPhase], el = Math.floor((pausedAt - t0) / 1000);
+    setText($('phase-label'), 'PAUSED');
+    setText($('phase-sub'), fmt(el) + ' of ' + fmt(total) + ' · ' + phaseName(p));
+    $('btn-skip').hidden = (p.kind !== 'warm');
+    $('btn-restart').hidden = (p.kind !== 'row'); // only scored steps can be restarted
+    // Without the PM5 you can only reconnect or end the workout
+    $('menu-msg').hidden = !linkLost;
+    $('btn-reconnect').hidden = !linkLost;
+    $('btn-resume').hidden = linkLost;
+    $('btn-pick').hidden = true; // only shown after a reconnect fails
+    if (linkLost) {
+      setText($('menu-msg'), 'PM5 disconnected. Pull the handle to wake it, then press Reconnect.');
+      $('btn-restart').hidden = true; $('btn-skip').hidden = true;
+    }
+    showMenu(true);
+    $(linkLost ? 'btn-reconnect' : 'btn-resume').focus(); // so Space or Enter does the main thing
+  }
+  function pause() {
+    paused = true;
+    pausedAt = performance.now();
+    cancelAnimationFrame(rafId); // the clock, darts and beeps all stop. The screen stays awake.
+    saveProgress((pausedAt - t0) / 1000);
+    openMenu();
+  }
+  // Counts 3-2-1 with beeps, then the clock moves on from where it stopped
+  function resume() {
+    counting = true;
+    showMenu(false); // the corner button shows Pause again, and can stop the countdown
+    var n = 3;
+    (function tick() {
+      if (n > 0) {
+        setText($('phase-label'), String(n));
+        setText($('phase-sub'), 'Get ready to row');
+        beep(784, 0.08, 0.1);
+        n--;
+        countdownTimer = setTimeout(tick, 1000);
+        return;
+      }
+      counting = false; paused = false;
+      t0 += performance.now() - pausedAt;                       // skip over the paused time
+      settleUntil = (performance.now() - t0) / 1000 + SETTLE;   // a few seconds to get back up to rate
+      lastPhase = -1;                                           // shows the step label again
+      rafId = requestAnimationFrame(frame);
+    })();
+  }
+  // Pause now, or if a countdown is running, stop it and show the menu
+  function holdInMenu() {
+    if (!paused) pause();
+    else { clearTimeout(countdownTimer); counting = false; openMenu(); }
+  }
+  function togglePause() {
+    if (!running) return;
+    if (!paused || counting) holdInMenu();
+    else if (!linkLost) resume(); // no resuming without the PM5
+  }
+
+  // Leaving the page (another tab, a locked phone) pauses the workout.
+  // Coming back asks for the screen lock again, since the browser drops it.
+  document.addEventListener('visibilitychange', function () {
+    if (!running) return;
+    if (document.hidden) { if (!paused || counting) holdInMenu(); }
+    else lock();
+  });
+
   function finish() {
+    clearTimeout(countdownTimer); paused = false; counting = false;
+    if (linkLost) lostToSetup(); // the start screen should say the PM5 is gone
+    clearProgress();             // finished or ended on purpose, so nothing to resume
     running = false; cancelAnimationFrame(rafId); unlock();
     if (stats.darts > 0) beep(1047, 0.35, 0.12);
     var pct = stats.darts ? Math.round(stats.on / stats.darts * 100) : 0;
@@ -503,10 +653,85 @@ import * as pm5 from './pm5.js';
   $('workout').addEventListener('change', function () { showPlan(); saveChoice(); });
   showPlan();
 
-  $('btn-start').addEventListener('click', start);
+  // ---- Saved progress ----
+  // While rowing, the workout saves its place every second and on every pause.
+  // If the page reloads or the laptop dies, the start screen offers to pick up there.
+  var SESSION_KEY = 'erg-games-session';
+  var MAX_AGE = 12 * 60 * 60 * 1000; // older than 12 hours is not the same session
+  var saved = null;
+  function saveProgress(el) {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify({ workout: wkey, elapsed: el, stats: stats, snap: snap, savedAt: Date.now() })); } catch (e) { }
+  }
+  function clearProgress() {
+    saved = null;
+    $('resume-box').hidden = true;
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) { }
+  }
+  try {
+    var s = JSON.parse(localStorage.getItem(SESSION_KEY));
+    if (s && INFO[s.workout] && Date.now() - s.savedAt < MAX_AGE) saved = s;
+  } catch (e) { }
+  if (saved) {
+    var at = fmt(Math.floor(saved.elapsed));
+    $('resume-text').textContent = 'Unfinished workout: ' + INFO[saved.workout].eyebrow + ', stopped at ' + at + '.';
+    $('btn-continue').textContent = 'Resume at ' + at;
+    $('resume-box').hidden = false;
+  }
+  $('btn-continue').addEventListener('click', function () { if (saved) start(saved); });
+  $('btn-discard').addEventListener('click', clearProgress);
+
+  // Wrapped, so the click event is not passed in as saved progress
+  $('btn-start').addEventListener('click', function () { start(); });
+  $('btn-pause').addEventListener('click', togglePause);
+  $('btn-resume').addEventListener('click', resume);
+  // Reach the same PM5 again, with no device picker
+  $('btn-reconnect').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Reconnecting…'; // on the button too, big enough to see from the seat
+    setText($('menu-msg'), 'Reconnecting…');
+    try {
+      await pm5.reconnect();
+      if (!running) return; // the workout was ended while we waited
+      linkLost = false;
+      $('btn-connect').textContent = 'PM5 connected';
+      $('btn-connect').disabled = true;
+      openMenu(); // Resume is back
+    } catch (e) {
+      setText($('menu-msg'), 'Could not reconnect. Pull the handle to wake the PM5, then try again, or choose it from the list.');
+      $('btn-pick').hidden = false;
+    } finally {
+      btn.disabled = false; // runs even after the early return above
+      btn.textContent = 'Reconnect PM5';
+    }
+  });
+  // The backup: pick the PM5 from the browser's list. The workout stays where it was.
+  $('btn-pick').addEventListener('click', async function () {
+    try {
+      await connectPM5();
+      if (!running) return;
+      linkLost = false;
+      openMenu(); // Resume is back
+    } catch (e) {
+      setText($('menu-msg'), 'Could not connect. Pull the handle to wake the PM5, then try again.');
+    }
+  });
   $('btn-end').addEventListener('click', finish);
+  // From the pause menu: undo this step's darts and score, go back to its start, then count in
+  $('btn-restart').addEventListener('click', function () {
+    if (!running || !paused) return;
+    var p = timeline[snap.i];
+    stats.score = snap.score; stats.darts = snap.darts; stats.on = snap.on; stats.bulls = snap.bulls;
+    stats.by = JSON.parse(snap.by);
+    darts.length = snap.drawn; popups = [];
+    p.thrown = -1;
+    t0 = pausedAt - p.start * 1000;
+    setText($('h-score'), String(stats.score));
+    resume();
+  });
+  // From the pause menu: jump to the end of the warm-up, then count in
   $('btn-skip').addEventListener('click', function () {
-    if (running && timeline[1]) t0 = performance.now() - timeline[1].start * 1000;
+    if (running && paused && timeline[1]) { t0 = pausedAt - timeline[1].start * 1000; resume(); }
   });
   $('btn-again').addEventListener('click', function () { show('setup'); });
 })();
