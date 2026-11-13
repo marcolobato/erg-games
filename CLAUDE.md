@@ -68,6 +68,8 @@ Source: Concept2 PM CSAFE Communication Definition, revision 0.31 (public PDF li
 - Heart rate: the PM5 passes the user's paired Garmin chest strap through in Additional Status 1 byte 6 (confirmed on a real row, 2026-11-04), so no separate strap connection is needed. A direct strap connection (standard Bluetooth heart rate service) also works.
 - Confirmed on the first recorded row (2026-11-04): pace (bytes 7-8 agree with the speed field and the PM5 screen), stroke rate, distance, time, power per stroke, and the force curve. Force curve values are pounds of force (lbf): each curve's peak matches that stroke's peak drive force in Stroke Data. Draw it on a fixed lbf scale, not stretched to fit, or easy strokes look like hard ones.
 - Other apps (like ErgData) can hold the connection. Close them first.
+- After "Disconnect app" in the PM5 menu, the PM5 refuses all apps until "Re-enable App Connection" is pressed on it; a reconnect just waits (confirmed on a real PM5, 2026-11-13). The game times out after 10 s and its messages point to that button.
+- The PM5 likely stays awake while an app is connected (Concept2 forum reports, not official), so mid-workout messages do not say "pull the handle". The start screen still does, since the PM5 may be asleep before a workout.
 - `docs/pm5-data.md` is the public summary of all of this (Phase 1 write-up). Keep it in step when facts change.
 - Useful libraries to read for reference: ergometer.js (JavaScript), Concept2-SDK by RowBotics (Swift), c2bluetooth (Flutter).
 

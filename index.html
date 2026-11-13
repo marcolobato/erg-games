@@ -560,7 +560,9 @@ import * as pm5 from './pm5.js';
     $('btn-resume').hidden = linkLost;
     $('btn-pick').hidden = true; // only shown after a reconnect fails
     if (linkLost) {
-      setText($('menu-msg'), 'PM5 disconnected. Pull the handle to wake it, then press Reconnect.');
+      // No "pull the handle" here: mid-workout the PM5 is already awake.
+      // After "Disconnect app" in its menu, the PM5 refuses apps until this is pressed.
+      setText($('menu-msg'), 'PM5 disconnected. If the PM5 shows Re-enable App Connection, press it. Then press Reconnect.');
       $('btn-restart').hidden = true; $('btn-skip').hidden = true;
     }
     showMenu(true);
@@ -703,7 +705,7 @@ import * as pm5 from './pm5.js';
       openMenu(); // Resume is back
     } catch (e) {
       if (await pm5.isBluetoothOff(e)) { setText($('menu-msg'), BT_OFF); return; } // the list can't help until it's on
-      setText($('menu-msg'), 'Could not reconnect. Pull the handle to wake the PM5, then try again, or choose it from the list.');
+      setText($('menu-msg'), 'Could not reconnect. Check the PM5 for Re-enable App Connection, then try again, or choose it from the list.');
       $('btn-pick').hidden = false;
     } finally {
       btn.disabled = false; // runs even after the early return above
@@ -719,7 +721,7 @@ import * as pm5 from './pm5.js';
       openMenu(); // Resume is back
     } catch (e) {
       if (await pm5.isBluetoothOff(e)) setText($('menu-msg'), BT_OFF);
-      else if (!(e && e.name === 'NotFoundError')) setText($('menu-msg'), 'Could not connect. Pull the handle to wake the PM5, then try again.');
+      else if (!(e && e.name === 'NotFoundError')) setText($('menu-msg'), 'Could not connect. Check the PM5 for Re-enable App Connection, then try again.');
     }
   });
   $('btn-end').addEventListener('click', finish);
