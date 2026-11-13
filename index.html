@@ -34,6 +34,12 @@
         <option value="w1s1">Week 1 · Session 1</option>
       </select>
       <label class="check" for="sound"><input type="checkbox" id="sound" checked> Sound</label>
+      <label for="metro">Metronome</label>
+      <select id="metro">
+        <option value="off">Off</option>
+        <option value="catch" selected>On the catch</option>
+        <option value="both">Catch + finish</option>
+      </select>
     </div>
     <!-- Shown when a workout was cut short, for example by a reload or a dead battery -->
     <div class="resume" id="resume-box" hidden>
@@ -88,6 +94,15 @@
       <button id="btn-restart" class="btn" type="button">Restart step</button>
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
       <button id="btn-end" class="btn" type="button">End workout</button>
+      <!-- Same setting as on the start screen, so it can change mid-row -->
+      <div class="fields">
+        <label for="metro-menu">Metronome</label>
+        <select id="metro-menu">
+          <option value="off">Off</option>
+          <option value="catch" selected>On the catch</option>
+          <option value="both">Catch + finish</option>
+        </select>
+      </div>
       <p class="note" id="menu-hint">Space or Esc also pauses and resumes.</p>
     </div>
   </section>
@@ -178,6 +193,7 @@ import * as pm5 from './pm5.js';
   var linkLost = false;                      // true while the PM5 is gone in the middle of a workout
   var beatAt = 0;                            // workout time (seconds) of the next metronome click
   var nextChime = null;                      // the step-change chime, once the last click of a step is booked
+  var finishAt = -1;                         // workout time of the next finish tick (Catch + finish only)
 
   // ---- Helpers ----
   function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
@@ -205,10 +221,11 @@ import * as pm5 from './pm5.js';
   var NOTE = { 22: 466, 24: 523, 26: 587, 28: 659 };
   // The metronome tick: short, plain and always the same, so it never sounds like feedback.
   // at: seconds from now, so the click can be booked early and still land on time.
-  function click(at, vol) {
+  // freq: 1200 for the catch, lower for the optional finish tick.
+  function click(at, vol, freq) {
     if (!audio || !$('sound').checked) return;
     var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + Math.max(0, at);
-    o.type = 'triangle'; o.frequency.value = 1200;
+    o.type = 'triangle'; o.frequency.value = freq || 1200;
     o.connect(g); g.connect(audio.destination);
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
@@ -481,11 +498,15 @@ import * as pm5 from './pm5.js';
     if (beatAt - el < AHEAD && beatAt < total) {
       var j = beatAt < p.start + p.len ? i : i + 1, q = timeline[j];
       var gap = 60 / (q.kind === 'row' ? q.spm : PADDLE_SPM);
-      click(beatAt - el, q.kind === 'row' ? 0.3 : 0.15);
+      var metro = $('metro').value, soft = q.kind === 'row' ? 1 : 0.5;
+      if (metro !== 'off') click(beatAt - el, 0.3 * soft);
+      // The finish comes about a third into the stroke, for a 1:2 drive to recovery
+      if (metro === 'both') finishAt = beatAt + gap / 3;
       // The last click of a step: the chime comes half a stroke later
       if (timeline[j + 1] && beatAt + gap >= q.start + q.len) nextChime = { at: beatAt + gap / 2, from: q, to: timeline[j + 1] };
       beatAt += gap;
     }
+    if (finishAt >= 0 && finishAt - el < AHEAD) { click(finishAt - el, 0.12, 800); finishAt = -1; }
     if (nextChime && nextChime.at - el < AHEAD) { chime(nextChime, nextChime.at - el); nextChime = null; }
 
     var left = Math.ceil(p.len - inPhase);
@@ -535,7 +556,7 @@ import * as pm5 from './pm5.js';
     });
     total = acc;
     stats = from ? from.stats : { score: 0, darts: 0, on: 0, bulls: 0, by: by };
-    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0; nextChime = null;
+    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0; nextChime = null; finishAt = -1;
     paused = false; counting = false; settleUntil = 0; snap = from ? from.snap : { i: -1 };
     showMenu(false);
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
@@ -623,7 +644,7 @@ import * as pm5 from './pm5.js';
       t0 += performance.now() - pausedAt;                       // skip over the paused time
       settleUntil = (performance.now() - t0) / 1000 + SETTLE;   // a few seconds to get back up to rate
       beatAt = (performance.now() - t0) / 1000;                 // the first click comes right after the count-in
-      nextChime = null;                                         // a restart or skip may have moved the clock
+      nextChime = null; finishAt = -1;                          // a restart or skip may have moved the clock
       lastPhase = -1;                                           // shows the step label again
       rafId = requestAnimationFrame(frame);
     })();
@@ -680,15 +701,19 @@ import * as pm5 from './pm5.js';
   // Storage can be blocked (private browsing), so reads and writes are wrapped.
   var SAVE_KEY = 'erg-games-workout';
   function saveChoice() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value })); } catch (e) { }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value, metro: $('metro').value })); } catch (e) { }
   }
   try {
     var saved = JSON.parse(localStorage.getItem(SAVE_KEY));
     // Only use saved values that are still real options
     if (saved && INFO[saved.workout]) $('workout').value = saved.workout;
+    if (saved && ['off', 'catch', 'both'].indexOf(saved.metro) >= 0) $('metro').value = $('metro-menu').value = saved.metro;
   } catch (e) { }
 
   $('workout').addEventListener('change', function () { showPlan(); saveChoice(); });
+  // The metronome menu is on the start screen and in the pause menu. Changing one changes both.
+  $('metro').addEventListener('change', function () { $('metro-menu').value = this.value; saveChoice(); });
+  $('metro-menu').addEventListener('change', function () { $('metro').value = this.value; saveChoice(); });
   showPlan();
 
   // ---- Saved progress ----
