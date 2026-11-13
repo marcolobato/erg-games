@@ -44,6 +44,7 @@ Design lesson: a game for rowing should reward the thing the workout asks for. I
 - Fonts: JetBrains Mono for numbers and headings, IBM Plex Mono for small text. Own colors on purpose, inspired by the PM5 screen.
 - Game: Pyramid Darts. A crosshair moves up when stroke rate is too high and down when too low. A dart lands every 2 seconds.
 - Protecting the session (PRs 8-10, live): a corner pause button and Space/Esc open a pause menu (Resume with a 3-2-1 count-in, Restart step, Skip warm-up, End workout). The game also pauses itself when the PM5 drops (Reconnect reaches the same PM5 without the picker) or the page is hidden. Progress is saved every second, so after a reload the start screen offers "Resume at 7:32". Reconnect gives up after 10 s and then offers "Choose PM5 again" (the device picker), keeping the workout. Bluetooth off gets its own message. While the PM5 is lost, the corner button is greyed out.
+- Metronome (branch `metronome`, not pushed): a click on every catch at the step's target rate, booked ahead on the audio clock so it lands on time. Warm-up, paddles and cooldown click softer at 20 spm. A two-note chime plays half a stroke before each step change (rising = faster next). Setting on the start screen and in the pause menu: Off, On the catch (default), Catch + finish (a lower tick a third into the stroke, for a 1:2 ratio). Dart sounds and the old step beeps are gone, since they clashed with the click. Rule for future game sounds: never on the click, quiet when on target.
 
 ## What is verified and what is not
 
@@ -55,6 +56,7 @@ Not verified:
 - W1S1's 1:30 warm-up and 0:30 cooldown. The 3 pyramids and the 30 s paddles come from the user's real row; the warm-up/cooldown split of the 2 spare minutes is a best guess.
 - Safari cannot use Web Bluetooth. Use Chrome or Edge on a laptop, Chrome on Android, or the Bluefy browser on iPhone (the user's phone setup, confirmed working).
 - Auto-pause when rowing stops, and shortening a session, are not built yet.
+- How the metronome feels on a real row, and how much delay Bluetooth headphones add to the click.
 
 ## PM5 Bluetooth facts
 
