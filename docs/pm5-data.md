@@ -17,6 +17,7 @@ You can try it yourself with the data explorer: **[marcolobato.github.io/erg-gam
 
 - The PM5 shows up as a Bluetooth device whose name starts with `PM5`. Pull the handle to wake it.
 - It only talks to one app at a time. Close ErgData or any other rowing app first.
+- If you choose "Disconnect app" in the PM5's menu, it refuses every app until you press "Re-enable App Connection" on the PM5. Until then, connecting just waits. Seen on a real PM5 on 2026-11-13.
 - Everything lives under one "rowing service". Each kind of data is a separate stream, and the page asks to be notified when a stream changes.
 - All the stream ids follow one pattern: `ce0600XX-43e5-11e4-916c-0800200c9a66`, where `XX` picks the stream.
 - Writing `1` to stream `34` (sample rate) asks for status updates about twice a second.
