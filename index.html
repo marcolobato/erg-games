@@ -118,6 +118,7 @@ import * as pm5 from './pm5.js';
   var STEPS = [[90, 24], [60, 26], [30, 28]]; // W1S1: seconds, strokes per minute
   var PYRAMIDS = 3, PADDLE = 30, PADDLE_SPM = 20, COOL = 30; // W1S1: easy paddle after every step
   var READY = 5, SETTLE = 4, GAP = 2;
+  var AHEAD = 0.1; // the metronome books each click this many seconds early, so it lands on time
   var WARM = { w1s2: 180, w1s1: 90 }, INTERVAL = 120; // W1S2: six 2 min steps
 
   var INFO = {
@@ -175,6 +176,7 @@ import * as pm5 from './pm5.js';
   var settleUntil = 0;                       // no darts until this many seconds into the workout
   var snap = { i: -1 };                      // the score when the current step began, for Restart step
   var linkLost = false;                      // true while the PM5 is gone in the middle of a workout
+  var beatAt = 0;                            // workout time (seconds) of the next metronome click
 
   // ---- Helpers ----
   function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
@@ -199,6 +201,17 @@ import * as pm5 from './pm5.js';
     o.start(t); o.stop(t + dur + 0.02);
   }
   var NOTE = { 22: 466, 24: 523, 26: 587, 28: 659 };
+  // The metronome tick: short, plain and always the same, so it never sounds like feedback.
+  // at: seconds from now, so the click can be booked early and still land on time.
+  function click(at, vol) {
+    if (!audio || !$('sound').checked) return;
+    var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + Math.max(0, at);
+    o.type = 'triangle'; o.frequency.value = 1200;
+    o.connect(g); g.connect(audio.destination);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    o.start(t); o.stop(t + 0.06);
+  }
 
   // ---- PM5 connection ----
   // Back to "not connected" on the start screen
@@ -457,6 +470,15 @@ import * as pm5 from './pm5.js';
       if (k > p.thrown) { p.thrown = k; throwDart(p, now); }
     }
 
+    // Metronome: a click on every catch. Each click takes its rate from the step it
+    // falls in, so the new tempo starts on the first catch of the next step.
+    // Warm-up, paddles and cooldown click softer, at the easy paddle rate.
+    if (beatAt - el < AHEAD && beatAt < total) {
+      var q = beatAt < p.start + p.len ? p : timeline[i + 1];
+      click(beatAt - el, q.kind === 'row' ? 0.3 : 0.15);
+      beatAt += 60 / (q.kind === 'row' ? q.spm : PADDLE_SPM);
+    }
+
     var left = Math.ceil(p.len - inPhase);
     if (left !== lastSec) {
       lastSec = left;
@@ -505,7 +527,7 @@ import * as pm5 from './pm5.js';
     });
     total = acc;
     stats = from ? from.stats : { score: 0, darts: 0, on: 0, bulls: 0, by: by };
-    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1;
+    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0;
     paused = false; counting = false; settleUntil = 0; snap = from ? from.snap : { i: -1 };
     showMenu(false);
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
@@ -592,6 +614,7 @@ import * as pm5 from './pm5.js';
       counting = false; paused = false;
       t0 += performance.now() - pausedAt;                       // skip over the paused time
       settleUntil = (performance.now() - t0) / 1000 + SETTLE;   // a few seconds to get back up to rate
+      beatAt = (performance.now() - t0) / 1000;                 // the first click comes right after the count-in
       lastPhase = -1;                                           // shows the step label again
       rafId = requestAnimationFrame(frame);
     })();
