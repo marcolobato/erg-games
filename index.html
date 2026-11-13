@@ -177,6 +177,7 @@ import * as pm5 from './pm5.js';
   var snap = { i: -1 };                      // the score when the current step began, for Restart step
   var linkLost = false;                      // true while the PM5 is gone in the middle of a workout
   var beatAt = 0;                            // workout time (seconds) of the next metronome click
+  var nextChime = null;                      // the step-change chime, once the last click of a step is booked
 
   // ---- Helpers ----
   function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
@@ -190,10 +191,11 @@ import * as pm5 from './pm5.js';
   function ready(on) { $('btn-start').disabled = !on; $('btn-continue').disabled = !on; }
 
   // ---- Sound ----
-  function beep(freq, dur, vol) {
+  // at (optional): seconds from now, to book a note ahead
+  function beep(freq, dur, vol, at) {
     if (!audio || !$('sound').checked) return;
     dur = dur || 0.12; vol = vol || 0.15;
-    var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime;
+    var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + Math.max(0, at || 0);
     o.type = 'square'; o.frequency.value = freq;
     o.connect(g); g.connect(audio.destination);
     g.gain.setValueAtTime(vol, t);
@@ -211,6 +213,13 @@ import * as pm5 from './pm5.js';
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
     o.start(t); o.stop(t + 0.06);
+  }
+  // Step change: two notes in the middle of the recovery before the next step's first catch,
+  // so they never land on a click. Rising = the next step is faster, falling = easier.
+  function chime(c, at) {
+    var from = c.from.kind === 'row' ? NOTE[c.from.spm] : 392, to = c.to.kind === 'row' ? NOTE[c.to.spm] : 392;
+    beep(from, 0.12, 0.12, at);
+    beep(to, 0.18, 0.12, at + 0.15);
   }
 
   // ---- PM5 connection ----
@@ -408,7 +417,7 @@ import * as pm5 from './pm5.js';
     if (a <= 1) stats.on++;
     if (a === 0) stats.bulls++;
     var b = stats.by[p.spm]; b.n++; if (a <= 1) b.on++;
-    if (pts === 10) beep(988, 0.08, 0.1);
+    // No dart sound for now: it landed on its own 2 s timer and clashed with the metronome
   }
 
   // ---- Phase change ----
@@ -430,22 +439,18 @@ import * as pm5 from './pm5.js';
       setText($('phase-label'), 'WARM UP');
       setText($('phase-sub'), 'Row easy for ' + fmt(p.len) + ' · ' + nextText(i));
       setText($('h-round'), '–');
-      beep(392, 0.25, 0.15);
     } else if (p.kind === 'row') {
       setText($('phase-label'), 'ROW AT ' + p.spm);
       setText($('phase-sub'), p.len + 's · ' + nextText(i));
       setText($('h-round'), p.round + '/' + roundsTotal);
-      beep(NOTE[p.spm] || 523, 0.25, 0.15);
     } else if (p.kind === 'paddle') {
       setText($('phase-label'), 'PADDLE');
       setText($('phase-sub'), 'Easy, about ' + PADDLE_SPM + ' spm · ' + nextText(i));
       setText($('h-round'), p.round + '/' + roundsTotal);
-      beep(262, 0.3, 0.15);
     } else {
       setText($('phase-label'), 'COOL DOWN');
       setText($('phase-sub'), 'Row easy to finish');
       setText($('h-round'), '–');
-      beep(262, 0.3, 0.15);
     }
   }
 
@@ -474,16 +479,19 @@ import * as pm5 from './pm5.js';
     // falls in, so the new tempo starts on the first catch of the next step.
     // Warm-up, paddles and cooldown click softer, at the easy paddle rate.
     if (beatAt - el < AHEAD && beatAt < total) {
-      var q = beatAt < p.start + p.len ? p : timeline[i + 1];
+      var j = beatAt < p.start + p.len ? i : i + 1, q = timeline[j];
+      var gap = 60 / (q.kind === 'row' ? q.spm : PADDLE_SPM);
       click(beatAt - el, q.kind === 'row' ? 0.3 : 0.15);
-      beatAt += 60 / (q.kind === 'row' ? q.spm : PADDLE_SPM);
+      // The last click of a step: the chime comes half a stroke later
+      if (timeline[j + 1] && beatAt + gap >= q.start + q.len) nextChime = { at: beatAt + gap / 2, from: q, to: timeline[j + 1] };
+      beatAt += gap;
     }
+    if (nextChime && nextChime.at - el < AHEAD) { chime(nextChime, nextChime.at - el); nextChime = null; }
 
     var left = Math.ceil(p.len - inPhase);
     if (left !== lastSec) {
       lastSec = left;
       saveProgress(el); // once a second, so a crash loses at most a second
-      if (left >= 1 && left <= 3 && i < timeline.length - 1) beep(784, 0.06, 0.08);
     }
 
     setText($('h-score'), String(stats.score));
@@ -527,7 +535,7 @@ import * as pm5 from './pm5.js';
     });
     total = acc;
     stats = from ? from.stats : { score: 0, darts: 0, on: 0, bulls: 0, by: by };
-    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0;
+    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0; nextChime = null;
     paused = false; counting = false; settleUntil = 0; snap = from ? from.snap : { i: -1 };
     showMenu(false);
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
@@ -615,6 +623,7 @@ import * as pm5 from './pm5.js';
       t0 += performance.now() - pausedAt;                       // skip over the paused time
       settleUntil = (performance.now() - t0) / 1000 + SETTLE;   // a few seconds to get back up to rate
       beatAt = (performance.now() - t0) / 1000;                 // the first click comes right after the count-in
+      nextChime = null;                                         // a restart or skip may have moved the clock
       lastPhase = -1;                                           // shows the step label again
       rafId = requestAnimationFrame(frame);
     })();
