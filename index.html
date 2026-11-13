@@ -34,6 +34,12 @@
         <option value="w1s1">Week 1 · Session 1</option>
       </select>
       <label class="check" for="sound"><input type="checkbox" id="sound" checked> Sound</label>
+      <label for="metro">Metronome</label>
+      <select id="metro">
+        <option value="off">Off</option>
+        <option value="catch" selected>On the catch</option>
+        <option value="both">Catch + finish</option>
+      </select>
     </div>
     <!-- Shown when a workout was cut short, for example by a reload or a dead battery -->
     <div class="resume" id="resume-box" hidden>
@@ -88,6 +94,15 @@
       <button id="btn-restart" class="btn" type="button">Restart step</button>
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
       <button id="btn-end" class="btn" type="button">End workout</button>
+      <!-- Same setting as on the start screen, so it can change mid-row -->
+      <div class="fields">
+        <label for="metro-menu">Metronome</label>
+        <select id="metro-menu">
+          <option value="off">Off</option>
+          <option value="catch" selected>On the catch</option>
+          <option value="both">Catch + finish</option>
+        </select>
+      </div>
       <p class="note" id="menu-hint">Space or Esc also pauses and resumes.</p>
     </div>
   </section>
@@ -118,6 +133,7 @@ import * as pm5 from './pm5.js';
   var STEPS = [[90, 24], [60, 26], [30, 28]]; // W1S1: seconds, strokes per minute
   var PYRAMIDS = 3, PADDLE = 30, PADDLE_SPM = 20, COOL = 30; // W1S1: easy paddle after every step
   var READY = 5, SETTLE = 4, GAP = 2;
+  var AHEAD = 0.1; // the metronome books each click this many seconds early, so it lands on time
   var WARM = { w1s2: 180, w1s1: 90 }, INTERVAL = 120; // W1S2: six 2 min steps
 
   var INFO = {
@@ -175,6 +191,9 @@ import * as pm5 from './pm5.js';
   var settleUntil = 0;                       // no darts until this many seconds into the workout
   var snap = { i: -1 };                      // the score when the current step began, for Restart step
   var linkLost = false;                      // true while the PM5 is gone in the middle of a workout
+  var beatAt = 0;                            // workout time (seconds) of the next metronome click
+  var nextChime = null;                      // the step-change chime, once the last click of a step is booked
+  var finishAt = -1;                         // workout time of the next finish tick (Catch + finish only)
 
   // ---- Helpers ----
   function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
@@ -188,10 +207,11 @@ import * as pm5 from './pm5.js';
   function ready(on) { $('btn-start').disabled = !on; $('btn-continue').disabled = !on; }
 
   // ---- Sound ----
-  function beep(freq, dur, vol) {
+  // at (optional): seconds from now, to book a note ahead
+  function beep(freq, dur, vol, at) {
     if (!audio || !$('sound').checked) return;
     dur = dur || 0.12; vol = vol || 0.15;
-    var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime;
+    var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + Math.max(0, at || 0);
     o.type = 'square'; o.frequency.value = freq;
     o.connect(g); g.connect(audio.destination);
     g.gain.setValueAtTime(vol, t);
@@ -199,6 +219,25 @@ import * as pm5 from './pm5.js';
     o.start(t); o.stop(t + dur + 0.02);
   }
   var NOTE = { 22: 466, 24: 523, 26: 587, 28: 659 };
+  // The metronome tick: short, plain and always the same, so it never sounds like feedback.
+  // at: seconds from now, so the click can be booked early and still land on time.
+  // freq: 1200 for the catch, lower for the optional finish tick.
+  function click(at, vol, freq) {
+    if (!audio || !$('sound').checked) return;
+    var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + Math.max(0, at);
+    o.type = 'triangle'; o.frequency.value = freq || 1200;
+    o.connect(g); g.connect(audio.destination);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    o.start(t); o.stop(t + 0.06);
+  }
+  // Step change: two notes in the middle of the recovery before the next step's first catch,
+  // so they never land on a click. Rising = the next step is faster, falling = easier.
+  function chime(c, at) {
+    var from = c.from.kind === 'row' ? NOTE[c.from.spm] : 392, to = c.to.kind === 'row' ? NOTE[c.to.spm] : 392;
+    beep(from, 0.12, 0.12, at);
+    beep(to, 0.18, 0.12, at + 0.15);
+  }
 
   // ---- PM5 connection ----
   // Back to "not connected" on the start screen
@@ -395,7 +434,7 @@ import * as pm5 from './pm5.js';
     if (a <= 1) stats.on++;
     if (a === 0) stats.bulls++;
     var b = stats.by[p.spm]; b.n++; if (a <= 1) b.on++;
-    if (pts === 10) beep(988, 0.08, 0.1);
+    // No dart sound for now: it landed on its own 2 s timer and clashed with the metronome
   }
 
   // ---- Phase change ----
@@ -417,22 +456,18 @@ import * as pm5 from './pm5.js';
       setText($('phase-label'), 'WARM UP');
       setText($('phase-sub'), 'Row easy for ' + fmt(p.len) + ' · ' + nextText(i));
       setText($('h-round'), '–');
-      beep(392, 0.25, 0.15);
     } else if (p.kind === 'row') {
       setText($('phase-label'), 'ROW AT ' + p.spm);
       setText($('phase-sub'), p.len + 's · ' + nextText(i));
       setText($('h-round'), p.round + '/' + roundsTotal);
-      beep(NOTE[p.spm] || 523, 0.25, 0.15);
     } else if (p.kind === 'paddle') {
       setText($('phase-label'), 'PADDLE');
       setText($('phase-sub'), 'Easy, about ' + PADDLE_SPM + ' spm · ' + nextText(i));
       setText($('h-round'), p.round + '/' + roundsTotal);
-      beep(262, 0.3, 0.15);
     } else {
       setText($('phase-label'), 'COOL DOWN');
       setText($('phase-sub'), 'Row easy to finish');
       setText($('h-round'), '–');
-      beep(262, 0.3, 0.15);
     }
   }
 
@@ -457,11 +492,27 @@ import * as pm5 from './pm5.js';
       if (k > p.thrown) { p.thrown = k; throwDart(p, now); }
     }
 
+    // Metronome: a click on every catch. Each click takes its rate from the step it
+    // falls in, so the new tempo starts on the first catch of the next step.
+    // Warm-up, paddles and cooldown click softer, at the easy paddle rate.
+    if (beatAt - el < AHEAD && beatAt < total) {
+      var j = beatAt < p.start + p.len ? i : i + 1, q = timeline[j];
+      var gap = 60 / (q.kind === 'row' ? q.spm : PADDLE_SPM);
+      var metro = $('metro').value, soft = q.kind === 'row' ? 1 : 0.5;
+      if (metro !== 'off') click(beatAt - el, 0.3 * soft);
+      // The finish comes about a third into the stroke, for a 1:2 drive to recovery
+      if (metro === 'both') finishAt = beatAt + gap / 3;
+      // The last click of a step: the chime comes half a stroke later
+      if (timeline[j + 1] && beatAt + gap >= q.start + q.len) nextChime = { at: beatAt + gap / 2, from: q, to: timeline[j + 1] };
+      beatAt += gap;
+    }
+    if (finishAt >= 0 && finishAt - el < AHEAD) { click(finishAt - el, 0.12, 800); finishAt = -1; }
+    if (nextChime && nextChime.at - el < AHEAD) { chime(nextChime, nextChime.at - el); nextChime = null; }
+
     var left = Math.ceil(p.len - inPhase);
     if (left !== lastSec) {
       lastSec = left;
       saveProgress(el); // once a second, so a crash loses at most a second
-      if (left >= 1 && left <= 3 && i < timeline.length - 1) beep(784, 0.06, 0.08);
     }
 
     setText($('h-score'), String(stats.score));
@@ -505,7 +556,7 @@ import * as pm5 from './pm5.js';
     });
     total = acc;
     stats = from ? from.stats : { score: 0, darts: 0, on: 0, bulls: 0, by: by };
-    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1;
+    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0; nextChime = null; finishAt = -1;
     paused = false; counting = false; settleUntil = 0; snap = from ? from.snap : { i: -1 };
     showMenu(false);
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
@@ -592,6 +643,8 @@ import * as pm5 from './pm5.js';
       counting = false; paused = false;
       t0 += performance.now() - pausedAt;                       // skip over the paused time
       settleUntil = (performance.now() - t0) / 1000 + SETTLE;   // a few seconds to get back up to rate
+      beatAt = (performance.now() - t0) / 1000;                 // the first click comes right after the count-in
+      nextChime = null; finishAt = -1;                          // a restart or skip may have moved the clock
       lastPhase = -1;                                           // shows the step label again
       rafId = requestAnimationFrame(frame);
     })();
@@ -648,15 +701,19 @@ import * as pm5 from './pm5.js';
   // Storage can be blocked (private browsing), so reads and writes are wrapped.
   var SAVE_KEY = 'erg-games-workout';
   function saveChoice() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value })); } catch (e) { }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value, metro: $('metro').value })); } catch (e) { }
   }
   try {
     var saved = JSON.parse(localStorage.getItem(SAVE_KEY));
     // Only use saved values that are still real options
     if (saved && INFO[saved.workout]) $('workout').value = saved.workout;
+    if (saved && ['off', 'catch', 'both'].indexOf(saved.metro) >= 0) $('metro').value = $('metro-menu').value = saved.metro;
   } catch (e) { }
 
   $('workout').addEventListener('change', function () { showPlan(); saveChoice(); });
+  // The metronome menu is on the start screen and in the pause menu. Changing one changes both.
+  $('metro').addEventListener('change', function () { $('metro-menu').value = this.value; saveChoice(); });
+  $('metro-menu').addEventListener('change', function () { $('metro').value = this.value; saveChoice(); });
   showPlan();
 
   // ---- Saved progress ----

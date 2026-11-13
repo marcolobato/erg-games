@@ -43,17 +43,20 @@ Design lesson: a game for rowing should reward the thing the workout asks for. I
 - Two workouts built in, named by code only: Week 1 Session 2 (W1S2, default) and Week 1 Session 1 (W1S1).
 - Fonts: JetBrains Mono for numbers and headings, IBM Plex Mono for small text. Own colors on purpose, inspired by the PM5 screen.
 - Game: Pyramid Darts. A crosshair moves up when stroke rate is too high and down when too low. A dart lands every 2 seconds.
-- Protecting the session (branch `pause-resume`, tested headless with a pretend PM5, not yet rowed): a corner pause button and Space/Esc open a pause menu (Resume with a 3-2-1 count-in, Restart step, Skip warm-up, End workout). The game also pauses itself when the PM5 drops (Reconnect reaches the same PM5 without the picker) or the page is hidden. Progress is saved every second, so after a reload the start screen offers "Resume at 7:32".
+- Protecting the session (PRs 8-10, live): a corner pause button and Space/Esc open a pause menu (Resume with a 3-2-1 count-in, Restart step, Skip warm-up, End workout). The game also pauses itself when the PM5 drops (Reconnect reaches the same PM5 without the picker) or the page is hidden. Progress is saved every second, so after a reload the start screen offers "Resume at 7:32". Reconnect gives up after 10 s and then offers "Choose PM5 again" (the device picker), keeping the workout. Bluetooth off gets its own message. While the PM5 is lost, the corner button is greyed out.
+- Metronome (branch `metronome`, not pushed): a click on every catch at the step's target rate, booked ahead on the audio clock so it lands on time. Warm-up, paddles and cooldown click softer at 20 spm. A two-note chime plays half a stroke before each step change (rising = faster next). Setting on the start screen and in the pause menu: Off, On the catch (default), Catch + finish (a lower tick a third into the stroke, for a 1:2 ratio). Dart sounds and the old step beeps are gone, since they clashed with the click. Rule for future game sounds: never on the click, quiet when on target.
 
 ## What is verified and what is not
 
-Verified: Bluetooth connection, live stroke rate, game runs through warm-up and into the first interval (also tested headless). After the Bluetooth code moved into `pm5.js`, a real PM5 still showed live stroke rate (checked on localhost, 2026-11-04).
+Verified: Bluetooth connection, live stroke rate, game runs through warm-up and into the first interval (also tested headless). After the Bluetooth code moved into `pm5.js`, a real PM5 still showed live stroke rate (checked on localhost, 2026-11-04). Pause, skip, restart step and resume after a reload worked on a real row (laptop). On the phone in Bluefy (2026-11-12/13): a Bluetooth off/on hiccup and a "Disconnect app" from the PM5 menu both recover with plain Reconnect PM5, and Bluefy reports Bluetooth off to the page.
 
 Not verified:
 - How the game feels while actually rowing a full session.
 - W1S2 starts at 22 spm. The source only says the steps alternate between 22 and 24.
 - W1S1's 1:30 warm-up and 0:30 cooldown. The 3 pyramids and the 30 s paddles come from the user's real row; the warm-up/cooldown split of the 2 spare minutes is a best guess.
-- Safari and iPhone cannot use Web Bluetooth. Chrome or Edge on a laptop, or Chrome on Android, are needed.
+- Safari cannot use Web Bluetooth. Use Chrome or Edge on a laptop, Chrome on Android, or the Bluefy browser on iPhone (the user's phone setup, confirmed working).
+- Auto-pause when rowing stops, and shortening a session, are not built yet.
+- How the metronome feels on a real row, and how much delay Bluetooth headphones add to the click.
 
 ## PM5 Bluetooth facts
 
@@ -101,7 +104,7 @@ Host with GitHub Pages. Web Bluetooth needs a secure page, and Pages gives HTTPS
 
 1. Baseline: commit `pyramid-darts.html` as it is.
 2. Split into modules (above), with no change in behavior.
-3. Player controls: pause, resume, restart segment, shorten. Add auto-save and resume after a dropped connection, since that is the main friction point.
+3. Player controls: pause, resume, restart segment, shorten. Add auto-save and resume after a dropped connection, since that is the main friction point. **Done except shorten and auto-pause when rowing stops (PRs 8-10).** Next up: the metronome, the first item of "feedback that guides" in the local draft `PLAN.md` (Phase 3).
 4. Workouts as JSON, plus a short guide for coaches to write one.
 5. More games and feedback, all reading the same live data. Ideas: a steady-pace line, a stroke-rate "heartbeat," a ghost race against your last session.
 6. Show it to real people: a coach, a gym with Concept2 ergs, a friend rowing alongside. Write down what they say.
