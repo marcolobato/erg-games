@@ -37,9 +37,10 @@
       <label for="metro">Metronome</label>
       <select id="metro">
         <option value="off">Off</option>
-        <option value="catch" selected>On the catch</option>
-        <option value="both">Catch + finish</option>
+        <option value="catch">Catch only</option>
+        <option value="count" selected>Countdown + catch</option>
       </select>
+      <label class="check" for="early"><input type="checkbox" id="early"> Headphones: sounds 0.2 s early</label>
     </div>
     <!-- Shown when a workout was cut short, for example by a reload or a dead battery -->
     <div class="resume" id="resume-box" hidden>
@@ -99,9 +100,10 @@
         <label for="metro-menu">Metronome</label>
         <select id="metro-menu">
           <option value="off">Off</option>
-          <option value="catch" selected>On the catch</option>
-          <option value="both">Catch + finish</option>
+          <option value="catch">Catch only</option>
+          <option value="count" selected>Countdown + catch</option>
         </select>
+        <label class="check" for="early-menu"><input type="checkbox" id="early-menu"> Headphones: sounds 0.2 s early</label>
       </div>
       <p class="note" id="menu-hint">Space or Esc also pauses and resumes.</p>
     </div>
@@ -134,6 +136,7 @@ import * as pm5 from './pm5.js';
   var PYRAMIDS = 3, PADDLE = 30, PADDLE_SPM = 20, COOL = 30; // W1S1: easy paddle after every step
   var READY = 5, SETTLE = 4, GAP = 2;
   var AHEAD = 0.1; // the metronome books each click this many seconds early, so it lands on time
+  var EARLY = 0.2; // Bluetooth headphones play sound about 0.15-0.27 s late, so they get it this much sooner
   var WARM = { w1s2: 180, w1s1: 90 }, INTERVAL = 120; // W1S2: six 2 min steps
 
   var INFO = {
@@ -193,7 +196,7 @@ import * as pm5 from './pm5.js';
   var linkLost = false;                      // true while the PM5 is gone in the middle of a workout
   var beatAt = 0;                            // workout time (seconds) of the next metronome click
   var nextChime = null;                      // the step-change chime, once the last click of a step is booked
-  var finishAt = -1;                         // workout time of the next finish tick (Catch + finish only)
+  var counts = [];                           // the countdown ticks booked for this stroke
 
   // ---- Helpers ----
   function setText(el, s) { if (el.textContent !== s) el.textContent = s; }
@@ -219,19 +222,20 @@ import * as pm5 from './pm5.js';
     o.start(t); o.stop(t + dur + 0.02);
   }
   var NOTE = { 22: 466, 24: 523, 26: 587, 28: 659 };
-  // The metronome tick: short, plain and always the same, so it never sounds like feedback.
-  // at: seconds from now, so the click can be booked early and still land on time.
-  // freq: 1200 for the catch, lower for the optional finish tick.
-  function click(at, vol, freq) {
+  // The countdown tick (3, 2, 1) on the way back to the catch. Softer than the catch,
+  // and rising in pitch, so you can feel the catch coming and push on it instead of reacting late.
+  // at: seconds from now, so the tick can be booked early and still land on time.
+  var COUNT_NOTE = { 3: 880, 2: 1047, 1: 1319 };
+  function tick(at, vol, freq) {
     if (!audio || !$('sound').checked) return;
     var o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + Math.max(0, at);
-    o.type = 'triangle'; o.frequency.value = freq || 1200;
+    o.type = 'triangle'; o.frequency.value = freq;
     o.connect(g); g.connect(audio.destination);
     g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-    o.start(t); o.stop(t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    o.start(t); o.stop(t + 0.1);
   }
-  // Step change: two notes in the middle of the recovery before the next step's first catch,
+  // Step change: two notes on the way back before the next step's first catch,
   // so they never land on a click. Rising = the next step is faster, falling = easier.
   function chime(c, at) {
     var from = c.from.kind === 'row' ? NOTE[c.from.spm] : 392, to = c.to.kind === 'row' ? NOTE[c.to.spm] : 392;
@@ -492,22 +496,29 @@ import * as pm5 from './pm5.js';
       if (k > p.thrown) { p.thrown = k; throwDart(p, now); }
     }
 
-    // Metronome: a click on every catch. Each click takes its rate from the step it
+    // Metronome: a sound on every catch. Each catch takes its rate from the step it
     // falls in, so the new tempo starts on the first catch of the next step.
-    // Warm-up, paddles and cooldown click softer, at the easy paddle rate.
-    if (beatAt - el < AHEAD && beatAt < total) {
+    // Warm-up, paddles and cooldown are softer, at the easy paddle rate.
+    // ear: the workout time by the time a sound reaches you. With headphones it is ahead of the clock.
+    var ear = el + ($('early').checked ? EARLY : 0);
+    if (beatAt - ear < AHEAD && beatAt < total) {
       var j = beatAt < p.start + p.len ? i : i + 1, q = timeline[j];
       var gap = 60 / (q.kind === 'row' ? q.spm : PADDLE_SPM);
       var metro = $('metro').value, soft = q.kind === 'row' ? 1 : 0.5;
-      if (metro !== 'off') click(beatAt - el, 0.3 * soft);
-      // The finish comes about a third into the stroke, for a 1:2 drive to recovery
-      if (metro === 'both') finishAt = beatAt + gap / 3;
-      // The last click of a step: the chime comes half a stroke later
-      if (timeline[j + 1] && beatAt + gap >= q.start + q.len) nextChime = { at: beatAt + gap / 2, from: q, to: timeline[j + 1] };
+      var last = timeline[j + 1] && beatAt + gap >= q.start + q.len; // the last catch of this step
+      // The catch: short, sharp and loud, so it cuts through the flywheel
+      if (metro !== 'off') beep(1760, 0.05, 0.3 * soft, beatAt - ear);
+      // Countdown: 3 at the planned finish (a third into the stroke, for a 1:2 drive to recovery),
+      // then 2 and 1 spread evenly over the way back. On the last stroke of a step the chime replaces the 3.
+      if (metro === 'count') {
+        counts = [3, 2, 1].map(function (n, k) { return { at: beatAt + gap / 3 + k * 2 * gap / 9, n: n, vol: 0.15 * soft }; });
+        if (last) counts.shift();
+      }
+      if (last) nextChime = { at: beatAt + gap * (metro === 'count' ? 1 / 3 : 1 / 2), from: q, to: timeline[j + 1] };
       beatAt += gap;
     }
-    if (finishAt >= 0 && finishAt - el < AHEAD) { click(finishAt - el, 0.12, 800); finishAt = -1; }
-    if (nextChime && nextChime.at - el < AHEAD) { chime(nextChime, nextChime.at - el); nextChime = null; }
+    while (counts.length && counts[0].at - ear < AHEAD) { var c = counts.shift(); tick(c.at - ear, c.vol, COUNT_NOTE[c.n]); }
+    if (nextChime && nextChime.at - ear < AHEAD) { chime(nextChime, nextChime.at - ear); nextChime = null; }
 
     var left = Math.ceil(p.len - inPhase);
     if (left !== lastSec) {
@@ -556,7 +567,7 @@ import * as pm5 from './pm5.js';
     });
     total = acc;
     stats = from ? from.stats : { score: 0, darts: 0, on: 0, bulls: 0, by: by };
-    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0; nextChime = null; finishAt = -1;
+    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0; nextChime = null; counts = [];
     paused = false; counting = false; settleUntil = 0; snap = from ? from.snap : { i: -1 };
     showMenu(false);
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
@@ -644,7 +655,7 @@ import * as pm5 from './pm5.js';
       t0 += performance.now() - pausedAt;                       // skip over the paused time
       settleUntil = (performance.now() - t0) / 1000 + SETTLE;   // a few seconds to get back up to rate
       beatAt = (performance.now() - t0) / 1000;                 // the first click comes right after the count-in
-      nextChime = null; finishAt = -1;                          // a restart or skip may have moved the clock
+      nextChime = null; counts = [];                          // a restart or skip may have moved the clock
       lastPhase = -1;                                           // shows the step label again
       rafId = requestAnimationFrame(frame);
     })();
@@ -701,19 +712,22 @@ import * as pm5 from './pm5.js';
   // Storage can be blocked (private browsing), so reads and writes are wrapped.
   var SAVE_KEY = 'erg-games-workout';
   function saveChoice() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value, metro: $('metro').value })); } catch (e) { }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value, metro: $('metro').value, early: $('early').checked })); } catch (e) { }
   }
   try {
     var saved = JSON.parse(localStorage.getItem(SAVE_KEY));
     // Only use saved values that are still real options
     if (saved && INFO[saved.workout]) $('workout').value = saved.workout;
-    if (saved && ['off', 'catch', 'both'].indexOf(saved.metro) >= 0) $('metro').value = $('metro-menu').value = saved.metro;
+    if (saved && ['off', 'catch', 'count'].indexOf(saved.metro) >= 0) $('metro').value = $('metro-menu').value = saved.metro;
+    if (saved) $('early').checked = $('early-menu').checked = !!saved.early;
   } catch (e) { }
 
   $('workout').addEventListener('change', function () { showPlan(); saveChoice(); });
   // The metronome menu is on the start screen and in the pause menu. Changing one changes both.
   $('metro').addEventListener('change', function () { $('metro-menu').value = this.value; saveChoice(); });
   $('metro-menu').addEventListener('change', function () { $('metro').value = this.value; saveChoice(); });
+  $('early').addEventListener('change', function () { $('early-menu').checked = this.checked; saveChoice(); });
+  $('early-menu').addEventListener('change', function () { $('early').checked = this.checked; saveChoice(); });
   showPlan();
 
   // ---- Saved progress ----
