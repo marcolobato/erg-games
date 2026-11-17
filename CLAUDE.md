@@ -44,7 +44,7 @@ Design lesson: a game for rowing should reward the thing the workout asks for. I
 - Fonts: JetBrains Mono for numbers and headings, IBM Plex Mono for small text. Own colors on purpose, inspired by the PM5 screen.
 - Game: Pyramid Darts. A crosshair moves up when stroke rate is too high and down when too low. A dart lands every 2 seconds.
 - Protecting the session (PRs 8-10, live): a corner pause button and Space/Esc open a pause menu (Resume with a 3-2-1 count-in, Restart step, Skip warm-up, End workout). The game also pauses itself when the PM5 drops (Reconnect reaches the same PM5 without the picker) or the page is hidden. Progress is saved every second, so after a reload the start screen offers "Resume at 7:32". Reconnect gives up after 10 s and then offers "Choose PM5 again" (the device picker), keeping the workout. Bluetooth off gets its own message. While the PM5 is lost, the corner button is greyed out.
-- Metronome (branch `metronome`, not pushed): a click on every catch at the step's target rate, booked ahead on the audio clock so it lands on time. Warm-up, paddles and cooldown click softer at 20 spm. A two-note chime plays half a stroke before each step change (rising = faster next). Setting on the start screen and in the pause menu: Off, On the catch (default), Catch + finish (a lower tick a third into the stroke, for a 1:2 ratio). Dart sounds and the old step beeps are gone, since they clashed with the click. Rule for future game sounds: never on the click, quiet when on target.
+- Metronome (PR 11, tuned after the first row): a sharp, loud note on every catch, booked ahead on the audio clock so it lands on time. Default "Countdown + catch": soft ticks 3, 2, 1 rising in pitch on the way back (3 at the planned finish, a third into the stroke for 1:2; 2 and 1 spread over the recovery), so the catch can be predicted, not reacted to. This follows the novice coxing count "One - two - three - catch, push". Warm-up, paddles and cooldown get it too, softer, at 20 spm. A two-note chime replaces the 3 on the last stroke before a step change (rising = faster next). Settings on the start screen and pause menu: Off, Catch only, Countdown + catch, and "Headphones: sounds 0.2 s early" for Bluetooth delay (off by default). Dart sounds are off. Rule for future game sounds: never on the catch, quiet when on target.
 
 ## What is verified and what is not
 
@@ -56,7 +56,7 @@ Not verified:
 - W1S1's 1:30 warm-up and 0:30 cooldown. The 3 pyramids and the 30 s paddles come from the user's real row; the warm-up/cooldown split of the 2 spare minutes is a best guess.
 - Safari cannot use Web Bluetooth. Use Chrome or Edge on a laptop, Chrome on Android, or the Bluefy browser on iPhone (the user's phone setup, confirmed working).
 - Auto-pause when rowing stops, and shortening a session, are not built yet.
-- How the metronome feels on a real row, and how much delay Bluetooth headphones add to the click.
+- How the countdown feels on a real row, and whether 0.2 s is the right headphone offset. First row with it (mid-November 2026): the catch-only click was too quiet on the phone speaker over the flywheel, felt late with AirPods, and caused reacting instead of anticipating.
 
 ## PM5 Bluetooth facts
 
