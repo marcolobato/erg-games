@@ -26,6 +26,9 @@
     </div>
     <p id="support" class="note" hidden>Bluetooth needs Chrome or Edge on a laptop, or Chrome on Android. Safari and iPhone can't connect. Practice mode works in any browser.</p>
     <p class="note">Close other apps that use the PM5 first, like ErgData.</p>
+    <!-- For testing without rowing: plays back a file saved by the data explorer (lab.html) -->
+    <p class="note">Have a recording from the data explorer? <button id="btn-replay" class="link" type="button">Replay it</button></p>
+    <input type="file" id="replay-file" accept=".json,application/json" hidden>
     <p id="live" class="live" hidden>Live stroke rate: <strong id="live-n">0</strong> spm</p>
     <div class="fields">
       <label for="workout">Workout</label>
@@ -266,6 +269,7 @@ import * as pm5 from './pm5.js';
   var BT_OFF = 'Bluetooth is off on this device. Turn it on and try again.';
 
   async function connectPM5() {
+    stopReplay();
     status('Pick your PM5 from the list. Wake it up first by pulling the handle.');
     var pm = await pm5.connect({
       onStrokeRate: function (n) {
@@ -296,11 +300,36 @@ import * as pm5 from './pm5.js';
   });
 
   $('btn-practice').addEventListener('click', function () {
+    stopReplay();
     mode = 'practice';
     practiceSpm = 20; spm = practiceSpm;
     $('live').hidden = true;
     status('Practice mode. You set your own rate with the arrow keys.');
     ready(true);
+  });
+
+  // ---- Replay a recorded row ----
+  // A recording from lab.html plays as if the PM5 were live. Works in any browser.
+  var replaying = null;
+  function stopReplay() { if (replaying) { replaying.stop(); replaying = null; } }
+  $('btn-replay').addEventListener('click', function () { $('replay-file').click(); });
+  $('replay-file').addEventListener('change', async function () {
+    var file = this.files[0];
+    this.value = ''; // so the same file can be picked again
+    if (!file) return;
+    try {
+      var rec = JSON.parse(await file.text());
+      stopReplay();
+      replaying = pm5.replay(rec, {
+        onStrokeRate: function (n) { spm = n; setText($('live-n'), String(n)); }
+      });
+      mode = 'replay'; spm = 0; pmName = replaying.name;
+      status('Replaying ' + replaying.name + ' from ' + file.name + '. It loops until the workout ends.');
+      $('live').hidden = false;
+      ready(true);
+    } catch (e) {
+      status('Could not replay that file. ' + (e && e.message ? e.message : e));
+    }
   });
 
   if (!pm5.isSupported()) {
@@ -573,7 +602,9 @@ import * as pm5 from './pm5.js';
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
     if (audio && audio.state === 'suspended') audio.resume();
     $('practice').hidden = (mode !== 'practice');
-    setText($('link'), mode === 'pm5' ? 'Reading stroke rate from ' + pmName : 'Practice mode. Rate is set by you.');
+    setText($('link'), mode === 'pm5' ? 'Reading stroke rate from ' + pmName
+      : mode === 'replay' ? 'Replaying ' + pmName + '. No rower needed.'
+      : 'Practice mode. Rate is set by you.');
     show('game');
     lock();
     running = true;
