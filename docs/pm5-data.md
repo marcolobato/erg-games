@@ -30,12 +30,20 @@ You can try it yourself with the data explorer: **[marcolobato.github.io/erg-gam
 | `31` | General Status | elapsed time, distance, drag factor | 0.01 s, 0.1 m | about 2–3 times a second |
 | `32` | Additional Status 1 | stroke rate, **pace per 500 m**, speed, **heart rate** | spm, 0.01 s, 0.001 m/s, bpm (255 = no strap) | about 2–3 times a second |
 | `33` | Additional Status 2 | average power, calories, interval count | watts | about 2–3 times a second |
-| `35` | Stroke Data | stroke count, drive time, peak and average force | count, 0.01 s, 0.1 lbf | twice per stroke |
+| `35` | Stroke Data | stroke count, drive time, peak and average force, **the moment of each catch and finish** | count, 0.01 s, 0.1 lbf | twice per stroke |
 | `36` | Additional Stroke Data | **power of each stroke** | watts | once per stroke |
 | `3d` | Force Curve | the shape of each pull | lbf | once per stroke, in pieces |
 | `3b` | Heart Rate Belt Info | which strap is paired | id | never appeared in our recordings |
 
 Heart rate can also come straight from a chest strap or watch through the standard Bluetooth heart rate service (`heart_rate`), without the PM5. That works too, but straps often allow only one or two connections at once.
+
+## Catch and finish, from Stroke Data
+
+Stroke Data arrives twice per stroke, and the two packets mark the two ends of the drive:
+- **At the finish**, the stroke count goes up by one and the new drive time arrives.
+- **At the catch**, a second packet comes with the same stroke count and the new recovery time.
+
+In our recording, the gap from catch packet to finish packet matched the drive time (about 0.8 s), and the arrival times were accurate to about 0.1 s. About 1 stroke in 5 had no catch packet. This is enough to tell whether a rower's catch lands on a metronome click.
 
 ## The force curve, in more detail
 
