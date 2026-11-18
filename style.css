@@ -86,7 +86,9 @@ select { font: inherit; background: var(--bg); color: var(--ink); border: 2px so
 .live strong { font-family: var(--font-display); font-size: 22px; }
 
 .hud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-#game { min-height: calc(100dvh - 48px); } /* fills the screen, so pausing does not make it jump */
+/* Fills the screen, so pausing does not make it jump. Stops at 840 px (about the rowing view's
+   height), so on a tall desktop window it does not stretch into empty space. */
+#game { min-height: min(calc(100dvh - 48px), 840px); }
 #game .hud { grid-template-columns: repeat(3, 1fr) auto; align-items: center; } /* 4th column: the pause button */
 /* Square icon button, big enough to hit from the seat */
 .btn.icon { width: 56px; height: 56px; padding: 0; display: grid; place-items: center; }
