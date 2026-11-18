@@ -31,6 +31,21 @@
     <p id="live" class="live" hidden>Live stroke rate: <strong id="live-n">0</strong> spm</p>
     <!-- Settings as full-width rows: each row is one big tap target (at least 56 px tall) -->
     <div class="list">
+      <!-- Two boards on the same rules: the rate aims. Skipping Stones adds power: a weak stroke sinks the stone short. -->
+      <label class="setting" for="game-pick">Game
+        <select id="game-pick">
+          <option value="darts" selected>Pyramid Darts</option>
+          <option value="stones">Skipping Stones (new)</option>
+        </select>
+      </label>
+      <!-- The power minimum. Easy suits a first try; Medium and Hard ask for more watts. -->
+      <label class="setting" for="level">Level
+        <select id="level">
+          <option value="easy" selected>Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
       <label class="setting" for="workout">Workout
         <select id="workout">
           <option value="w1s2" selected>Week 1 · Session 2</option>
@@ -114,7 +129,19 @@
       <button id="btn-restart" class="btn" type="button">Restart step</button>
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
       <button id="btn-end" class="btn" type="button">End workout</button>
-      <!-- Same setting as on the start screen, so it can change mid-row -->
+      <!-- Same settings as on the start screen, so they can change mid-row -->
+      <div class="group">
+        <p class="label">Power</p>
+        <div class="list">
+          <label class="setting" for="level-menu">Level
+            <select id="level-menu">
+              <option value="easy" selected>Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </label>
+        </div>
+      </div>
       <div class="group">
         <p class="label">Sound</p>
         <div class="list">
@@ -209,6 +236,8 @@ import * as pm5 from './pm5.js';
   // ---- State ----
   var mode = null;          // 'pm5' or 'practice'
   var spm = 0;              // current stroke rate
+  var game = 'darts';       // 'darts' or 'stones', picked on the start screen
+  var powerLog = [], lastW = null; // watts of the last few strokes, and of the very last one
   var practiceSpm = 20;
   var running = false, rafId = 0, t0 = 0, total = 0;
   var timeline = [], roundsTotal = 6, wkey = 'w1s2', lastPhase = -1, lastSec = -1;
@@ -400,7 +429,8 @@ import * as pm5 from './pm5.js';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   new ResizeObserver(fit).observe(cv);
-  var EASE = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 0.25;
+  var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var EASE = REDUCED ? 1 : 0.25;
 
   // While paused or counting in, no frames run, so the board would keep old colors after a
   // light/dark switch. redraw() draws the last frame again with the current colors.
@@ -417,6 +447,7 @@ import * as pm5 from './pm5.js';
     fit();
     var s = size; if (!s) return;
     ctx.clearRect(0, 0, s, s);
+    if (game === 'stones') { drawStones(p, now, inPhase, waiting); return; }
     var cx = s / 2, cy = s / 2, R = (s / 2) * 0.84, u = R / 3.5;
     var resting = p.kind !== 'row'; // warm-up, paddle and cooldown have no darts
 
@@ -490,6 +521,140 @@ import * as pm5 from './pm5.js';
     ctx.stroke();
   }
 
+  // ---- Skipping Stones board ----
+  // Drawn on a 400 x 400 grid (the Figma frame) and scaled to the canvas. The lake is seen at an
+  // angle, so rings are ellipses half as tall as they are wide. Top: a thin far shore. Middle: the
+  // target. Bottom: power per stroke. Rate aims (up = too fast), as in the darts game.
+  var SK = { cx: 200, cy: 150, u: 54, k: 0.5, from: { x: 340, y: 268 } }; // from: where the stone leaves your hand
+  var HOPS = [0.3, 0.52, 0.68, 0.8, 0.9, 1];     // where each skip lands, as a share of the way to the target
+  var HOP_AT = [0.28, 0.48, 0.64, 0.77, 0.89, 1]; // when it lands there, as a share of the flight time
+  var HOP_UP = [58, 40, 28, 18, 12, 8];          // how high each hop arcs
+  var RIPPLE = [20, 16, 12, 9, 7, 6];            // ripple size at each skip; they shrink with distance
+  var SINK = 0.62;                               // a short throw sinks here, after 2 skips, clearly before the target
+  var FLY = 900, FADE = 600;                     // ms for a full throw, and for a ripple to fade
+  function drawStones(p, now, inPhase, waiting) {
+    var cx = SK.cx, cy = SK.cy, u = SK.u, k = SK.k, z = size / 400;
+    var resting = p.kind !== 'row', dim = resting ? 0.35 : 1;
+    ctx.save(); ctx.scale(z, z);
+
+    // far shore and water
+    ctx.globalAlpha = 0.5; ctx.fillStyle = C.line; ctx.beginPath(); ctx.moveTo(0, 34);
+    [[0, 20], [50, 8], [100, 18], [160, 4], [230, 20], [300, 10], [400, 18], [400, 34]].forEach(function (q) { ctx.lineTo(q[0], q[1]); });
+    ctx.fill();
+    ctx.globalAlpha = 1; ctx.fillStyle = C.panel; ctx.fillRect(0, 34, 400, 248);
+
+    // rings: soft bands, then 3 px lines so they read from the seat
+    function ring(r) { ctx.beginPath(); ctx.ellipse(cx, cy, r * u, r * u * k, 0, 0, Math.PI * 2); }
+    ctx.fillStyle = C.ink;
+    [[3.5, 0.10], [2.5, 0.16], [1.5, 0.10], [0.5, 0.34]].forEach(function (b) { ctx.globalAlpha = b[1] * dim; ring(b[0]); ctx.fill(); });
+    ctx.lineWidth = 3; ctx.strokeStyle = C.ink;
+    [[3.5, 0.55], [2.5, 0.7], [1.5, 0.85], [0.5, 1]].forEach(function (b) { ctx.globalAlpha = b[1] * dim; ring(b[0]); ctx.stroke(); });
+    ctx.globalAlpha = 1; ctx.fillStyle = C['ink-soft']; ctx.textAlign = 'center';
+    ctx.font = "500 12px 'IBM Plex Mono', monospace";
+    ctx.fillText('▲ TOO FAST', cx, 50);
+    ctx.fillText('▼ TOO SLOW', cx, 272);
+
+    if (resting) {
+      // No stones: what this part is, your live rate, and the time left
+      var title = { warm: 'WARM UP', paddle: 'PADDLE', cool: 'COOL DOWN', ready: 'GET READY' }[p.kind];
+      var until = { warm: 'stones start in ', paddle: 'next step in ', cool: 'done in ', ready: '' }[p.kind];
+      ctx.fillStyle = C.ink;
+      ctx.font = "700 30px 'JetBrains Mono', monospace"; ctx.fillText(title, cx, cy - 10);
+      ctx.font = "700 26px 'JetBrains Mono', monospace"; ctx.fillText(spm + ' spm', cx, cy + 22);
+      ctx.fillStyle = C['ink-soft']; ctx.font = "500 12px 'IBM Plex Mono', monospace";
+      if (until) ctx.fillText(until + fmt(Math.ceil(p.len - inPhase)), cx, cy + 46);
+    } else {
+      // Each stone flies from your hand toward where the rate aimed it. at(s) is the point
+      // a share s of the way there. A short throw skips twice, then sinks.
+      popups = []; // stones show their own points
+      darts.slice(-12).forEach(function (d, n, list) {
+        var land = { x: cx + d.ux * u, y: cy - d.uy * u * k };
+        function at(s) { return { x: SK.from.x + (land.x - SK.from.x) * s, y: SK.from.y + (land.y - SK.from.y) * s }; }
+        var stops = d.short ? HOPS.slice(0, 2).concat(SINK) : HOPS;
+        var last = stops.length - 1, landMs = REDUCED ? 0 : HOP_AT[last] * FLY, age = now - d.born;
+        var end = at(stops[last]), col = d.short ? C.miss : C.hit;
+
+        if (age < landMs) {
+          // in flight: dotted arcs for the hops done so far, ripples where it touched, and the stone
+          var q = age / FLY, i = 0;
+          while (HOP_AT[i] <= q) i++;
+          ctx.lineWidth = 3; ctx.setLineDash([2, 7]); ctx.lineCap = 'round';
+          for (var j = 0; j <= i; j++) {
+            var a = at(j ? stops[j - 1] : 0), b = at(stops[j]);
+            ctx.globalAlpha = 1; ctx.strokeStyle = d.short && j === last ? C.miss : C.hit;
+            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo((a.x + b.x) / 2, (a.y + b.y) / 2 - 2 * HOP_UP[j], b.x, b.y);
+            if (j < i) ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          for (j = 0; j < i; j++) {
+            var r0 = RIPPLE[j], t = (q - HOP_AT[j]) * FLY / FADE, c = at(stops[j]);
+            if (t < 1) { ctx.globalAlpha = 1 - t; ctx.strokeStyle = C.hit; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(c.x, c.y, r0 * (1 + t), r0 * (1 + t) / 2, 0, 0, Math.PI * 2); ctx.stroke(); }
+          }
+          var from = at(i ? stops[i - 1] : 0), to = at(stops[i]), f = (q - (i ? HOP_AT[i - 1] : 0)) / (HOP_AT[i] - (i ? HOP_AT[i - 1] : 0));
+          var sx = from.x + (to.x - from.x) * f, sy = from.y + (to.y - from.y) * f - HOP_UP[i] * Math.sin(Math.PI * f);
+          ctx.globalAlpha = 1; ctx.fillStyle = C.ink; ctx.beginPath(); ctx.ellipse(sx, sy, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
+        } else {
+          // landed: a small ring stays where it stopped, older ones fade
+          var since = age - landMs;
+          if (!REDUCED && since < FADE) { // the landing ripple spreads out
+            ctx.globalAlpha = 1 - since / FADE; ctx.strokeStyle = col; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.ellipse(end.x, end.y, 20 + 16 * since / FADE, (20 + 16 * since / FADE) / 2, 0, 0, Math.PI * 2); ctx.stroke();
+          }
+          ctx.globalAlpha = 0.35 + 0.65 * ((n + 1) / list.length);
+          ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.ellipse(end.x, end.y, 9, 4.5, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(end.x, end.y, 2.5, 0, Math.PI * 2); ctx.fill();
+          if (since < 1200) { // the points, rising and fading
+            var right = end.x > 230; // on the right half, put the text on the left so it stays on the board
+            ctx.globalAlpha = 1 - since / 1200; ctx.fillStyle = col; ctx.textAlign = right ? 'right' : 'left';
+            ctx.font = "700 20px 'JetBrains Mono', monospace";
+            ctx.fillText(d.short ? '0 · short' : '+' + d.pts, end.x + (right ? -14 : 14), end.y - 10 - since / 120);
+          }
+        }
+      });
+
+      // crosshair: a ring with a full cross, where the rate is aiming now
+      var target = Math.max(-3.8, Math.min(3.8, spm - p.spm));
+      aimErr += (target - aimErr) * EASE;
+      var ay = cy - aimErr * u * k;
+      ctx.globalAlpha = 1; ctx.strokeStyle = C.ink; ctx.lineWidth = 3;
+      ctx.setLineDash(waiting ? [4, 4] : []); // dashed while stones are on hold
+      ctx.beginPath(); ctx.arc(cx, ay, 11, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(cx - 34, ay); ctx.lineTo(cx + 34, ay); ctx.moveTo(cx, ay - 24); ctx.lineTo(cx, ay + 24); ctx.stroke();
+    }
+
+    // power: one bar per stroke, a dashed line at the minimum, and a dashed bar to aim the next stroke at
+    var floor = floorFor(p), base = 392, ppw = 80 / 190;
+    function wy(w) { return base - Math.min(w, 190) * ppw; }
+    ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.fillStyle = C['ink-soft'];
+    ctx.font = "500 12px 'IBM Plex Mono', monospace";
+    ctx.fillText('POWER · W', 12, 302);
+    ctx.textAlign = 'right';
+    if (lastW === null) ctx.fillText(mode === 'practice' ? 'Power needs a PM5' : 'Waiting for a stroke', 390, 302);
+    else {
+      var low = floor > 0 && lastW < floor;
+      ctx.fillStyle = low ? C.miss : floor ? C.hit : C.ink; ctx.font = "700 16px 'JetBrains Mono', monospace";
+      ctx.fillText(low ? 'PUSH +' + (floor - lastW) + ' W' : floor ? 'NEXT ≥ ' + floor + ' W' : lastW + ' W', 390, 302);
+    }
+    var bw = 26, gap = 10, x0 = 61;
+    powerLog.forEach(function (w, i) {
+      ctx.globalAlpha = i === powerLog.length - 1 ? 1 : 0.5;
+      ctx.fillStyle = floor > 0 && w < floor ? C.miss : C.hit;
+      ctx.fillRect(x0 + i * (bw + gap), wy(w), bw, base - wy(w));
+    });
+    if (floor && mode !== 'practice') { // practice has no power, so no minimum to show
+      var gx = x0 + 7 * (bw + gap);
+      ctx.globalAlpha = 0.15; ctx.fillStyle = C.ink; ctx.fillRect(gx, wy(floor), bw, base - wy(floor));
+      ctx.globalAlpha = 1; ctx.strokeStyle = C.ink; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
+      ctx.strokeRect(gx, wy(floor), bw, base - wy(floor));
+      ctx.strokeStyle = C['ink-soft']; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(12, wy(floor)); ctx.lineTo(388, wy(floor)); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
   // ---- Darts ----
   function throwDart(p, now) {
     var err = spm - p.spm, a = Math.abs(err);
@@ -499,7 +664,11 @@ import * as pm5 from './pm5.js';
     if (err > 0) ang = (20 + Math.random() * 140) * Math.PI / 180;
     else if (err < 0) ang = (200 + Math.random() * 140) * Math.PI / 180;
     else ang = Math.random() * Math.PI * 2;
-    var d = { ux: r * Math.cos(ang), uy: r * Math.sin(ang), pts: pts, born: now };
+    // Skipping Stones: the rate aims, the power throws. If the last stroke was under the
+    // minimum, the stone sinks short and scores nothing. No watts yet (practice mode): it always reaches.
+    var floor = floorFor(p), short = game === 'stones' && lastW !== null && floor > 0 && lastW < floor;
+    if (short) pts = 0;
+    var d = { ux: r * Math.cos(ang), uy: r * Math.sin(ang), pts: pts, born: now, short: short };
     darts.push(d); popups.push(d);
     stats.score += pts; stats.darts++;
     if (a <= 1) stats.on++;
@@ -543,25 +712,27 @@ import * as pm5 from './pm5.js';
   }
 
   // ---- Power: the last stroke's watts and force curve ----
-  // A first try, to learn whether this helps while rowing. Not part of the score yet.
-  // The minimum is the Medium level from PLAN.md: 111 W at 22 spm, scaled up with the rate.
-  var FLOOR_22 = 111;
+  // The minimum per level, in watts at 22 spm, scaled up with the rate. From PLAN.md:
+  // 70% of rankings from Concept2's 2025 30-minute results.
+  // Darts only show it. Skipping Stones scores it: under the minimum, the stone sinks short.
+  var FLOOR_22 = { easy: 85, medium: 111, hard: 136 };
   var curve = { points: null, previous: null }, scaleLbf = 200;
   var cvC = $('curve'), ctxC = cvC.getContext('2d');
   new ResizeObserver(drawCurve).observe(cvC);
+  // The minimum for a step, or 0 for warm-up, paddles and cooldown
+  function floorFor(p) { return p && p.kind === 'row' ? Math.round(FLOOR_22[$('level').value] * p.spm / 22) : 0; }
   function onStrokePower(w) {
     if (!running) return;
-    var p = timeline[lastPhase], floor = p && p.kind === 'row' ? Math.round(FLOOR_22 * p.spm / 22) : 0;
-    var low = floor > 0 && w < floor, el = $('r-watts');
+    lastW = w; powerLog = powerLog.concat(w).slice(-7); // Skipping Stones draws these as bars
+    var floor = floorFor(timeline[lastPhase]), low = floor > 0 && w < floor, el = $('r-watts');
     setText(el, !floor ? w + ' W' : low ? w + ' W · push +' + (floor - w) : w + ' W · min ' + floor);
     el.classList.toggle('low', low);
-    $('power').hidden = false;
+    if (game === 'darts') $('power').hidden = false; // Skipping Stones shows power inside its board
   }
   function onForceCurve(points) {
     if (!running) return;
     curve.previous = curve.points; curve.points = points; // the faint line is the stroke before
-    $('power').hidden = false;
-    drawCurve();
+    if (game === 'darts') { $('power').hidden = false; drawCurve(); }
   }
   // Pounds of force (lbf) on a fixed scale, like the PM5 graph, so an easy stroke stays low.
   // Left to right is one drive: legs first, then body, then arms.
@@ -714,6 +885,7 @@ import * as pm5 from './pm5.js';
     if (audio && audio.state === 'suspended') audio.resume();
     $('practice').hidden = (mode !== 'practice');
     curve = { points: null, previous: null }; $('power').hidden = true; setText($('r-watts'), '–'); // shows again on the first stroke
+    game = $('game-pick').value; powerLog = []; lastW = null;
     setText($('link'), mode === 'pm5' ? 'Reading stroke rate from ' + pmName
       : mode === 'replay' ? 'Replaying ' + pmName + '. No rower needed.'
       : 'Practice mode. Rate is set by you.');
@@ -861,17 +1033,23 @@ import * as pm5 from './pm5.js';
   // Storage can be blocked (private browsing), so reads and writes are wrapped.
   var SAVE_KEY = 'erg-games-workout';
   function saveChoice() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value, metro: $('metro').value, early: $('early').checked })); } catch (e) { }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value, game: $('game-pick').value, level: $('level').value, metro: $('metro').value, early: $('early').checked })); } catch (e) { }
   }
   try {
     var saved = JSON.parse(localStorage.getItem(SAVE_KEY));
     // Only use saved values that are still real options
     if (saved && INFO[saved.workout]) $('workout').value = saved.workout;
+    if (saved && (saved.game === 'darts' || saved.game === 'stones')) $('game-pick').value = saved.game;
+    if (saved && FLOOR_22[saved.level]) $('level').value = $('level-menu').value = saved.level;
     if (saved && ['off', 'catch', 'count'].indexOf(saved.metro) >= 0) $('metro').value = $('metro-menu').value = saved.metro;
     if (saved) $('early').checked = $('early-menu').checked = !!saved.early;
   } catch (e) { }
 
   $('workout').addEventListener('change', function () { showPlan(); saveChoice(); });
+  $('game-pick').addEventListener('change', saveChoice);
+  // Level is on the start screen and in the pause menu too. Changing one changes both.
+  $('level').addEventListener('change', function () { $('level-menu').value = this.value; saveChoice(); });
+  $('level-menu').addEventListener('change', function () { $('level').value = this.value; saveChoice(); });
   // The metronome menu is on the start screen and in the pause menu. Changing one changes both.
   $('metro').addEventListener('change', function () { $('metro-menu').value = this.value; saveChoice(); });
   $('metro-menu').addEventListener('change', function () { $('metro').value = this.value; saveChoice(); });
