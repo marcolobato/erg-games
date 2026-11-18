@@ -63,9 +63,19 @@ h2 { font-size: 26px; }
 .btn:not(:disabled):hover { background: var(--ink); color: var(--bg); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
-.fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
 select { font: inherit; background: var(--bg); color: var(--ink); border: 2px solid var(--ink); border-radius: 4px; padding: 6px 8px; }
-.check { display: flex; align-items: center; gap: 8px; }
+/* Settings: full-width rows in a softly outlined list. The lighter "line" color and
+   regular text keep them quieter than the buttons, so the main actions still come first. */
+.group { display: flex; flex-direction: column; gap: 6px; }
+.group .label { margin: 0; }
+.menu .group { margin-top: 10px; } /* extra space under the action buttons */
+.list { border: 2px solid var(--line); border-radius: 4px; }
+/* Each row is one tap target, 56 px tall (guides ask for at least 44-48) */
+.setting { display: flex; align-items: center; gap: 12px; min-height: 56px; padding-left: 12px; cursor: pointer; }
+.setting + .setting { border-top: 2px solid var(--line); }
+/* The menu fills the rest of its row, so most of the row opens it. No box: the row is the box. */
+.setting select { flex: 1; align-self: stretch; min-width: 0; border: 0; background: transparent; padding: 0 12px; margin-right: 8px; text-align: right; text-align-last: right; cursor: pointer; }
+.setting input[type="checkbox"] { width: 24px; height: 24px; margin: 0; flex: none; accent-color: var(--ink); }
 .plan { margin: 0; padding: 12px 0 0; border-top: 2px solid var(--line); display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; font-size: 13px; }
 .plan dt { font-weight: 500; font-variant-numeric: tabular-nums; }
 .plan dd { margin: 0; color: var(--ink-soft); }
@@ -76,7 +86,9 @@ select { font: inherit; background: var(--bg); color: var(--ink); border: 2px so
 .live strong { font-family: var(--font-display); font-size: 22px; }
 
 .hud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-#game { min-height: calc(100dvh - 48px); } /* fills the screen, so pausing does not make it jump */
+/* Fills the screen, so pausing does not make it jump. Stops at 840 px (about the rowing view's
+   height), so on a tall desktop window it does not stretch into empty space. */
+#game { min-height: min(calc(100dvh - 48px), 840px); }
 #game .hud { grid-template-columns: repeat(3, 1fr) auto; align-items: center; } /* 4th column: the pause button */
 /* Square icon button, big enough to hit from the seat */
 .btn.icon { width: 56px; height: 56px; padding: 0; display: grid; place-items: center; }

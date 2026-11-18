@@ -30,20 +30,28 @@
     <p class="note">Have a recording from the data explorer? <button id="btn-replay" class="link" type="button">Replay it</button></p>
     <input type="file" id="replay-file" accept=".json,application/json" hidden>
     <p id="live" class="live" hidden>Live stroke rate: <strong id="live-n">0</strong> spm</p>
-    <div class="fields">
-      <label for="workout">Workout</label>
-      <select id="workout">
-        <option value="w1s2" selected>Week 1 · Session 2</option>
-        <option value="w1s1">Week 1 · Session 1</option>
-      </select>
-      <label class="check" for="sound"><input type="checkbox" id="sound" checked> Sound</label>
-      <label for="metro">Metronome</label>
-      <select id="metro">
-        <option value="off">Off</option>
-        <option value="catch">Catch only</option>
-        <option value="count" selected>Countdown + catch</option>
-      </select>
-      <label class="check" for="early"><input type="checkbox" id="early"> Headphones: sounds 0.2 s early</label>
+    <!-- Settings as full-width rows: each row is one big tap target (at least 56 px tall) -->
+    <div class="list">
+      <label class="setting" for="workout">Workout
+        <select id="workout">
+          <option value="w1s2" selected>Week 1 · Session 2</option>
+          <option value="w1s1">Week 1 · Session 1</option>
+        </select>
+      </label>
+    </div>
+    <div class="group">
+      <p class="label">Sound</p>
+      <div class="list">
+        <label class="setting" for="sound"><input type="checkbox" id="sound" checked> Sound</label>
+        <label class="setting" for="metro">Metronome
+          <select id="metro">
+            <option value="off">Off</option>
+            <option value="catch">Catch only</option>
+            <option value="count" selected>Countdown + catch</option>
+          </select>
+        </label>
+        <label class="setting" for="early"><input type="checkbox" id="early"> Headphones: sounds 0.2 s early</label>
+      </div>
     </div>
     <!-- Shown when a workout was cut short, for example by a reload or a dead battery -->
     <div class="resume" id="resume-box" hidden>
@@ -99,14 +107,18 @@
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
       <button id="btn-end" class="btn" type="button">End workout</button>
       <!-- Same setting as on the start screen, so it can change mid-row -->
-      <div class="fields">
-        <label for="metro-menu">Metronome</label>
-        <select id="metro-menu">
-          <option value="off">Off</option>
-          <option value="catch">Catch only</option>
-          <option value="count" selected>Countdown + catch</option>
-        </select>
-        <label class="check" for="early-menu"><input type="checkbox" id="early-menu"> Headphones: sounds 0.2 s early</label>
+      <div class="group">
+        <p class="label">Sound</p>
+        <div class="list">
+          <label class="setting" for="metro-menu">Metronome
+            <select id="metro-menu">
+              <option value="off">Off</option>
+              <option value="catch">Catch only</option>
+              <option value="count" selected>Countdown + catch</option>
+            </select>
+          </label>
+          <label class="setting" for="early-menu"><input type="checkbox" id="early-menu"> Headphones: sounds 0.2 s early</label>
+        </div>
       </div>
       <p class="note" id="menu-timing" hidden></p>
       <p class="note" id="menu-hint">Space or Esc also pauses and resumes.</p>
