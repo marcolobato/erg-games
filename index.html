@@ -38,6 +38,14 @@
           <option value="stones">Skipping Stones (new)</option>
         </select>
       </label>
+      <!-- The power minimum. Easy suits a first try; Medium and Hard ask for more watts. -->
+      <label class="setting" for="level">Level
+        <select id="level">
+          <option value="easy" selected>Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
       <label class="setting" for="workout">Workout
         <select id="workout">
           <option value="w1s2" selected>Week 1 · Session 2</option>
@@ -121,7 +129,19 @@
       <button id="btn-restart" class="btn" type="button">Restart step</button>
       <button id="btn-skip" class="btn" type="button" hidden>Skip warm-up</button>
       <button id="btn-end" class="btn" type="button">End workout</button>
-      <!-- Same setting as on the start screen, so it can change mid-row -->
+      <!-- Same settings as on the start screen, so they can change mid-row -->
+      <div class="group">
+        <p class="label">Power</p>
+        <div class="list">
+          <label class="setting" for="level-menu">Level
+            <select id="level-menu">
+              <option value="easy" selected>Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </label>
+        </div>
+      </div>
       <div class="group">
         <p class="label">Sound</p>
         <div class="list">
@@ -692,14 +712,15 @@ import * as pm5 from './pm5.js';
   }
 
   // ---- Power: the last stroke's watts and force curve ----
-  // A first try, to learn whether this helps while rowing. Not part of the score yet.
-  // The minimum is the Medium level from PLAN.md: 111 W at 22 spm, scaled up with the rate.
-  var FLOOR_22 = 111;
+  // The minimum per level, in watts at 22 spm, scaled up with the rate. From PLAN.md:
+  // 70% of rankings from Concept2's 2025 30-minute results.
+  // Darts only show it. Skipping Stones scores it: under the minimum, the stone sinks short.
+  var FLOOR_22 = { easy: 85, medium: 111, hard: 136 };
   var curve = { points: null, previous: null }, scaleLbf = 200;
   var cvC = $('curve'), ctxC = cvC.getContext('2d');
   new ResizeObserver(drawCurve).observe(cvC);
   // The minimum for a step, or 0 for warm-up, paddles and cooldown
-  function floorFor(p) { return p && p.kind === 'row' ? Math.round(FLOOR_22 * p.spm / 22) : 0; }
+  function floorFor(p) { return p && p.kind === 'row' ? Math.round(FLOOR_22[$('level').value] * p.spm / 22) : 0; }
   function onStrokePower(w) {
     if (!running) return;
     lastW = w; powerLog = powerLog.concat(w).slice(-7); // Skipping Stones draws these as bars
@@ -1012,19 +1033,23 @@ import * as pm5 from './pm5.js';
   // Storage can be blocked (private browsing), so reads and writes are wrapped.
   var SAVE_KEY = 'erg-games-workout';
   function saveChoice() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value, game: $('game-pick').value, metro: $('metro').value, early: $('early').checked })); } catch (e) { }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ workout: $('workout').value, game: $('game-pick').value, level: $('level').value, metro: $('metro').value, early: $('early').checked })); } catch (e) { }
   }
   try {
     var saved = JSON.parse(localStorage.getItem(SAVE_KEY));
     // Only use saved values that are still real options
     if (saved && INFO[saved.workout]) $('workout').value = saved.workout;
     if (saved && (saved.game === 'darts' || saved.game === 'stones')) $('game-pick').value = saved.game;
+    if (saved && FLOOR_22[saved.level]) $('level').value = $('level-menu').value = saved.level;
     if (saved && ['off', 'catch', 'count'].indexOf(saved.metro) >= 0) $('metro').value = $('metro-menu').value = saved.metro;
     if (saved) $('early').checked = $('early-menu').checked = !!saved.early;
   } catch (e) { }
 
   $('workout').addEventListener('change', function () { showPlan(); saveChoice(); });
   $('game-pick').addEventListener('change', saveChoice);
+  // Level is on the start screen and in the pause menu too. Changing one changes both.
+  $('level').addEventListener('change', function () { $('level-menu').value = this.value; saveChoice(); });
+  $('level-menu').addEventListener('change', function () { $('level').value = this.value; saveChoice(); });
   // The metronome menu is on the start screen and in the pause menu. Changing one changes both.
   $('metro').addEventListener('change', function () { $('metro-menu').value = this.value; saveChoice(); });
   $('metro-menu').addEventListener('change', function () { $('metro').value = this.value; saveChoice(); });
