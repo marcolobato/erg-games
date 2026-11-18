@@ -74,6 +74,36 @@ async function startStrokeRate(dev, handlers) {
   await ch.startNotifications();
 }
 
+// ---- Replay ----
+// Plays a recording saved by lab.html as if a PM5 were sending it live, so the
+// game can be tested without rowing, in any browser. It uses the same callback
+// as connect(): onStrokeRate(n). It loops at the end, so a 5 minute recording
+// can fill a 15 minute workout. Returns { name, stop }.
+// Throws if the file is not a recording.
+export function replay(rec, handlers) {
+  if (!rec || rec.format !== 'erg-games-pm5-recording' || !Array.isArray(rec.packets) || !rec.packets.length) {
+    throw new Error('This file is not a PM5 recording from the data explorer.');
+  }
+  // Each packet was saved as its time in ms and its bytes as hex text ("00 1A ...")
+  var packets = rec.packets.map(function (p) {
+    var bytes = new Uint8Array(p.hex.split(' ').map(function (h) { return parseInt(h, 16); }));
+    return { ms: p.ms, stream: p.stream, v: new DataView(bytes.buffer) };
+  });
+  var lapMs = packets[packets.length - 1].ms + 500; // a short gap before it starts again
+  var i = 0, lap = 0, start = performance.now(), timer = 0;
+  // Waits until the next packet is due, measured from the start, so timing never drifts
+  function schedule() { timer = setTimeout(play, Math.max(0, start + lap * lapMs + packets[i].ms - performance.now())); }
+  function play() {
+    var p = packets[i];
+    if (p.stream === 'Additional Status 1' && p.v.byteLength > 5) handlers.onStrokeRate(p.v.getUint8(5));
+    i++;
+    if (i === packets.length) { i = 0; lap++; }
+    schedule();
+  }
+  schedule();
+  return { name: 'a recording of ' + (rec.device || 'a PM5'), stop: function () { clearTimeout(timer); } };
+}
+
 // ---- More PM5 data (used by lab.html) ----
 // Byte positions and units come from the community library ergometer.js,
 // which has been used with real PM5s. lab.html shows the raw bytes next to

@@ -51,6 +51,9 @@ h2 { font-size: 26px; }
 .row > * { flex: 1 1 140px; }
 .status { margin: 0; font-weight: 500; min-height: 3em; }
 .note { margin: 0; font-size: 12px; color: var(--ink-soft); }
+/* A button that looks like a text link, for small extras like Replay */
+.link { font: inherit; color: var(--ink); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.link:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 .btn {
   font-family: var(--font-display); font-weight: 700; font-size: 19px;
   min-height: 48px; padding: 10px 16px; border: 2px solid var(--ink); border-radius: 4px;
