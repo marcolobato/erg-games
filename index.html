@@ -12,7 +12,6 @@
 <body>
 <main class="wrap">
   <header id="top">
-    <p class="eyebrow" id="eyebrow">Week 1 · Session 2</p>
     <h1>Pyramid Darts</h1>
     <p class="lede">Hold each stroke rate and your darts land on the bull.</p>
   </header>
@@ -379,8 +378,6 @@ import * as pm5 from './pm5.js';
     var cs = getComputedStyle(document.documentElement);
     ['bg', 'panel', 'ink', 'ink-soft', 'line', 'hit', 'miss'].forEach(function (k) { C[k] = cs.getPropertyValue('--' + k).trim(); });
   }
-  readColors();
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
   function fit() {
     var s = Math.round(cv.getBoundingClientRect().width);
     if (!s || s === size) return;
@@ -393,6 +390,10 @@ import * as pm5 from './pm5.js';
   var EASE = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 0.25;
 
   function draw(p, now, inPhase, waiting) {
+    // Read the theme colors every frame, not once at load. On iPhone (Bluefy) a read at load
+    // can come back empty, and a canvas then draws everything black, unreadable in dark mode.
+    // Reading here also follows the phone switching to dark mode mid-workout.
+    readColors();
     fit();
     var s = size; if (!s) return;
     ctx.clearRect(0, 0, s, s);
@@ -777,7 +778,6 @@ import * as pm5 from './pm5.js';
 
   function showPlan() {
     var key = $('workout').value, info = INFO[key], dl = $('plan');
-    $('eyebrow').textContent = info.eyebrow;
     dl.innerHTML = '';
     info.plan.forEach(function (row) {
       var dt = document.createElement('dt'), dd = document.createElement('dd');
