@@ -6,6 +6,7 @@
 var SVC = 'ce060030-43e5-11e4-916c-0800200c9a66';
 var CH_ADD1 = 'ce060032-43e5-11e4-916c-0800200c9a66';   // additional status 1: stroke rate is byte 5
 var CH_SAMPLE = 'ce060034-43e5-11e4-916c-0800200c9a66'; // how often status is sent
+var CH_STROKE = 'ce060035-43e5-11e4-916c-0800200c9a66'; // stroke data: sent at the finish and at the catch
 
 // True if this browser can use Web Bluetooth (Chrome or Edge, not Safari).
 export function isSupported() {
@@ -29,6 +30,8 @@ var gameDevice = null, gameHandlers = null;
 
 // Opens the browser's device picker, connects, and starts live updates.
 //   onStrokeRate(n)  called with strokes per minute, about twice a second
+//   onCatch()        called as each drive starts (optional, not sent for every stroke)
+//   onFinish()       called as each drive ends (optional)
 //   onDisconnect()   called if the PM5 drops the connection
 // Returns { name } once connected. Throws if the picker is closed or connecting fails.
 export async function connect(handlers) {
@@ -72,12 +75,33 @@ async function startStrokeRate(dev, handlers) {
     onPacket: function (name, v) { if (v.byteLength > 5) handlers.onStrokeRate(v.getUint8(5)); }
   });
   await ch.startNotifications();
+  // Catches and finishes, to time strokes against the metronome. Extra: if this
+  // stream won't start, stroke rate still works, so the workout is never blocked.
+  try {
+    var sd = await svc.getCharacteristic(CH_STROKE);
+    var onStrokeData = strokeEvents(handlers);
+    listen(sd, 'Stroke Data', { onPacket: function (name, v) { onStrokeData(v); } });
+    await sd.startNotifications();
+  } catch (e) { /* no stroke timing, the game still runs */ }
+}
+
+// Stroke Data arrives twice per stroke: at the finish the stroke count goes up,
+// and at the catch a second packet comes with the same count. Seen on a real row
+// (2026-11-04). About 1 stroke in 5 had no catch packet, so catches are optional.
+function strokeEvents(handlers) {
+  var last = -1, caught = false;
+  return function (v) {
+    if (v.byteLength < 20) return;
+    var count = v.getUint8(18) + v.getUint8(19) * 256;
+    if (count !== last) { last = count; caught = false; if (handlers.onFinish) handlers.onFinish(); }
+    else if (!caught) { caught = true; if (handlers.onCatch) handlers.onCatch(); }
+  };
 }
 
 // ---- Replay ----
 // Plays a recording saved by lab.html as if a PM5 were sending it live, so the
 // game can be tested without rowing, in any browser. It uses the same callback
-// as connect(): onStrokeRate(n). It loops at the end, so a 5 minute recording
+// as connect(): onStrokeRate(n), and onCatch() and onFinish(). It loops at the end, so a 5 minute recording
 // can fill a 15 minute workout. Returns { name, stop }.
 // Throws if the file is not a recording.
 export function replay(rec, handlers) {
@@ -90,12 +114,13 @@ export function replay(rec, handlers) {
     return { ms: p.ms, stream: p.stream, v: new DataView(bytes.buffer) };
   });
   var lapMs = packets[packets.length - 1].ms + 500; // a short gap before it starts again
-  var i = 0, lap = 0, start = performance.now(), timer = 0;
+  var i = 0, lap = 0, start = performance.now(), timer = 0, onStrokeData = strokeEvents(handlers);
   // Waits until the next packet is due, measured from the start, so timing never drifts
   function schedule() { timer = setTimeout(play, Math.max(0, start + lap * lapMs + packets[i].ms - performance.now())); }
   function play() {
     var p = packets[i];
     if (p.stream === 'Additional Status 1' && p.v.byteLength > 5) handlers.onStrokeRate(p.v.getUint8(5));
+    if (p.stream === 'Stroke Data') onStrokeData(p.v);
     i++;
     if (i === packets.length) { i = 0; lap++; }
     schedule();
