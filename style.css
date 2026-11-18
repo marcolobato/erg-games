@@ -75,7 +75,19 @@ select { font: inherit; background: var(--bg); color: var(--ink); border: 2px so
 .setting + .setting { border-top: 2px solid var(--line); }
 /* The menu fills the rest of its row, so most of the row opens it. No box: the row is the box. */
 .setting select { flex: 1; align-self: stretch; min-width: 0; border: 0; background: transparent; padding: 0 12px; margin-right: 8px; text-align: right; text-align-last: right; cursor: pointer; }
-.setting input[type="checkbox"] { width: 24px; height: 24px; margin: 0; flex: none; accent-color: var(--ink); }
+/* Our own checkbox, like Figma: the built-in one is a solid black square in iPhone dark mode */
+.setting input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 24px; height: 24px; margin: 0; flex: none; cursor: pointer;
+  border: 2px solid var(--ink); border-radius: 4px; background: var(--bg);
+  display: grid; place-items: center;
+}
+.setting input[type="checkbox"]:checked { background: var(--ink); }
+/* The tick: the right and bottom borders of a small box, turned 45 degrees */
+.setting input[type="checkbox"]:checked::after {
+  content: ''; width: 6px; height: 12px; margin-top: -3px;
+  border: solid var(--bg); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg);
+}
 .plan { margin: 0; padding: 12px 0 0; border-top: 2px solid var(--line); display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; font-size: 13px; }
 .plan dt { font-weight: 500; font-variant-numeric: tabular-nums; }
 .plan dd { margin: 0; color: var(--ink-soft); }

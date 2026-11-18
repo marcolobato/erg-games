@@ -389,7 +389,14 @@ import * as pm5 from './pm5.js';
   new ResizeObserver(fit).observe(cv);
   var EASE = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 0.25;
 
+  // While paused or counting in, no frames run, so the board would keep old colors after a
+  // light/dark switch. redraw() draws the last frame again with the current colors.
+  var lastDraw = null;
+  function redraw() { if (running && lastDraw) draw.apply(null, lastDraw); }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { requestAnimationFrame(redraw); });
+
   function draw(p, now, inPhase, waiting) {
+    lastDraw = [p, now, inPhase, waiting];
     // Read the theme colors every frame, not once at load. On iPhone (Bluefy) a read at load
     // can come back empty, and a canvas then draws everything black, unreadable in dark mode.
     // Reading here also follows the phone switching to dark mode mid-workout.
@@ -721,6 +728,7 @@ import * as pm5 from './pm5.js';
       if (n > 0) {
         setText($('phase-label'), String(n));
         setText($('phase-sub'), 'Get ready to row');
+        redraw(); // the board shows again here, so bring its colors up to date
         beep(784, 0.08, 0.1);
         n--;
         countdownTimer = setTimeout(tick, 1000);
@@ -751,7 +759,7 @@ import * as pm5 from './pm5.js';
   document.addEventListener('visibilitychange', function () {
     if (!running) return;
     if (document.hidden) { if (!paused || counting) holdInMenu(); }
-    else lock();
+    else { lock(); requestAnimationFrame(redraw); } // the theme may have changed while away
   });
 
   function finish() {
