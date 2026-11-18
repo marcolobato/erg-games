@@ -88,6 +88,15 @@
         <div><div class="label">You</div><div class="big"><span id="r-you">0</span> <small>spm</small></div></div>
       </div>
       <div class="delta" id="delta" aria-live="polite"></div>
+      <!-- The last stroke: its watts, and its power curve (where in the drive you pushed).
+           Appears once the PM5 sends a stroke, so practice mode looks the same as before. -->
+      <div class="power" id="power" hidden>
+        <div class="power-head">
+          <div class="label">Power curve · lbf</div>
+          <div class="watts" id="r-watts">–</div>
+        </div>
+        <div class="curve-wrap"><canvas id="curve" role="img" aria-label="Graph of how hard you pulled during the last stroke. The faint line is the stroke before."></canvas></div>
+      </div>
       <div class="practice" id="practice" hidden>
         <button class="btn" id="btn-down" type="button" aria-label="Lower stroke rate">−</button>
         <span>Practice: use the arrow keys or these buttons to set your rate.</span>
@@ -291,6 +300,8 @@ import * as pm5 from './pm5.js';
         setText($('live-n'), String(spm));
       },
       onCatch: onCatch,
+      onStrokePower: onStrokePower,
+      onForceCurve: onForceCurve,
       onDisconnect: onDrop
     });
     pmName = pm.name;
@@ -337,7 +348,9 @@ import * as pm5 from './pm5.js';
       stopReplay();
       replaying = pm5.replay(rec, {
         onStrokeRate: function (n) { spm = n; setText($('live-n'), String(n)); },
-        onCatch: onCatch
+        onCatch: onCatch,
+        onStrokePower: onStrokePower,
+        onForceCurve: onForceCurve
       });
       mode = 'replay'; spm = 0; pmName = replaying.name;
       status('Replaying ' + replaying.name + ' from ' + file.name + '. It loops until the workout ends.');
@@ -392,7 +405,7 @@ import * as pm5 from './pm5.js';
   // While paused or counting in, no frames run, so the board would keep old colors after a
   // light/dark switch. redraw() draws the last frame again with the current colors.
   var lastDraw = null;
-  function redraw() { if (running && lastDraw) draw.apply(null, lastDraw); }
+  function redraw() { if (running && lastDraw) draw.apply(null, lastDraw); drawCurve(); }
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { requestAnimationFrame(redraw); });
 
   function draw(p, now, inPhase, waiting) {
@@ -529,6 +542,56 @@ import * as pm5 from './pm5.js';
     }
   }
 
+  // ---- Power: the last stroke's watts and force curve ----
+  // A first try, to learn whether this helps while rowing. Not part of the score yet.
+  // The minimum is the Medium level from PLAN.md: 111 W at 22 spm, scaled up with the rate.
+  var FLOOR_22 = 111;
+  var curve = { points: null, previous: null }, scaleLbf = 200;
+  var cvC = $('curve'), ctxC = cvC.getContext('2d');
+  new ResizeObserver(drawCurve).observe(cvC);
+  function onStrokePower(w) {
+    if (!running) return;
+    var p = timeline[lastPhase], floor = p && p.kind === 'row' ? Math.round(FLOOR_22 * p.spm / 22) : 0;
+    var low = floor > 0 && w < floor, el = $('r-watts');
+    setText(el, !floor ? w + ' W' : low ? w + ' W · push +' + (floor - w) : w + ' W · min ' + floor);
+    el.classList.toggle('low', low);
+    $('power').hidden = false;
+  }
+  function onForceCurve(points) {
+    if (!running) return;
+    curve.previous = curve.points; curve.points = points; // the faint line is the stroke before
+    $('power').hidden = false;
+    drawCurve();
+  }
+  // Pounds of force (lbf) on a fixed scale, like the PM5 graph, so an easy stroke stays low.
+  // Left to right is one drive: legs first, then body, then arms.
+  function drawCurve() {
+    if (!curve.points) return;
+    var box = cvC.getBoundingClientRect(), w = Math.round(box.width), h = Math.round(box.height);
+    if (w < 50 || h < 30) return; // hidden (paused) or too small
+    readColors();
+    var dpr = window.devicePixelRatio || 1;
+    if (cvC.width !== w * dpr || cvC.height !== h * dpr) { cvC.width = w * dpr; cvC.height = h * dpr; }
+    ctxC.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctxC.clearRect(0, 0, w, h);
+    var peak = Math.max.apply(null, curve.points.concat([0]));
+    if (peak > scaleLbf) scaleLbf = Math.ceil(peak / 50) * 50; // grows only for a harder stroke
+    var pad = 4;
+    function x(i, n) { return pad + (i / Math.max(n - 1, 1)) * (w - 2 * pad); }
+    function y(p) { return h - pad - (p / scaleLbf) * (h - 2 * pad); }
+    // a faint line every 50 lbf
+    ctxC.strokeStyle = C.line; ctxC.lineWidth = 1;
+    for (var m = 50; m < scaleLbf; m += 50) { ctxC.beginPath(); ctxC.moveTo(0, y(m)); ctxC.lineTo(w, y(m)); ctxC.stroke(); }
+    function path(pts) { ctxC.beginPath(); pts.forEach(function (p, i) { if (i) ctxC.lineTo(x(i, pts.length), y(p)); else ctxC.moveTo(x(i, pts.length), y(p)); }); }
+    ctxC.lineJoin = 'round'; ctxC.strokeStyle = C.ink;
+    if (curve.previous) { ctxC.globalAlpha = 0.3; ctxC.lineWidth = 3; path(curve.previous); ctxC.stroke(); }
+    // the latest stroke: a soft fill under a thick line, so its shape reads from the seat
+    var pts = curve.points;
+    path(pts); ctxC.lineTo(x(pts.length - 1, pts.length), y(0)); ctxC.lineTo(x(0, pts.length), y(0)); ctxC.closePath();
+    ctxC.globalAlpha = 0.15; ctxC.fillStyle = C.ink; ctxC.fill();
+    ctxC.globalAlpha = 1; ctxC.lineWidth = 4; path(pts); ctxC.stroke();
+  }
+
   // ---- Catch timing ----
   // The PM5 reports each catch, so we can check whether you pushed on the click.
   // Each catch is measured from the nearest click: negative = before it, positive = after.
@@ -650,6 +713,7 @@ import * as pm5 from './pm5.js';
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
     if (audio && audio.state === 'suspended') audio.resume();
     $('practice').hidden = (mode !== 'practice');
+    curve = { points: null, previous: null }; $('power').hidden = true; setText($('r-watts'), '–'); // shows again on the first stroke
     setText($('link'), mode === 'pm5' ? 'Reading stroke rate from ' + pmName
       : mode === 'replay' ? 'Replaying ' + pmName + '. No rower needed.'
       : 'Practice mode. Rate is set by you.');

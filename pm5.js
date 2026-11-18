@@ -7,6 +7,8 @@ var SVC = 'ce060030-43e5-11e4-916c-0800200c9a66';
 var CH_ADD1 = 'ce060032-43e5-11e4-916c-0800200c9a66';   // additional status 1: stroke rate is byte 5
 var CH_SAMPLE = 'ce060034-43e5-11e4-916c-0800200c9a66'; // how often status is sent
 var CH_STROKE = 'ce060035-43e5-11e4-916c-0800200c9a66'; // stroke data: sent at the finish and at the catch
+var CH_POWER = 'ce060036-43e5-11e4-916c-0800200c9a66';  // additional stroke data: watts, once per stroke
+var CH_CURVE = 'ce06003d-43e5-11e4-916c-0800200c9a66';  // force curve: the shape of each drive, in pieces
 
 // True if this browser can use Web Bluetooth (Chrome or Edge, not Safari).
 export function isSupported() {
@@ -32,6 +34,8 @@ var gameDevice = null, gameHandlers = null;
 //   onStrokeRate(n)  called with strokes per minute, about twice a second
 //   onCatch()        called as each drive starts (optional, not sent for every stroke)
 //   onFinish()       called as each drive ends (optional)
+//   onStrokePower(w) called once per stroke with that stroke's watts (optional)
+//   onForceCurve(p)  called after each drive with its force curve, in lbf (optional, not on PM5v1)
 //   onDisconnect()   called if the PM5 drops the connection
 // Returns { name } once connected. Throws if the picker is closed or connecting fails.
 export async function connect(handlers) {
@@ -83,6 +87,27 @@ async function startStrokeRate(dev, handlers) {
     listen(sd, 'Stroke Data', { onPacket: function (name, v) { onStrokeData(v); } });
     await sd.startNotifications();
   } catch (e) { /* no stroke timing, the game still runs */ }
+  // Watts per stroke and the force curve, for the power readout. Extras too.
+  var power = powerEvents(handlers);
+  try {
+    var ps = await svc.getCharacteristic(CH_POWER);
+    listen(ps, 'Additional Stroke Data', { onPacket: function (name, v) { power.watts(v); } });
+    await ps.startNotifications();
+  } catch (e) { /* no watts, the game still runs */ }
+  try {
+    var fc = await svc.getCharacteristic(CH_CURVE);
+    listen(fc, 'Force Curve', { onPacket: function (name, v) { power.curve(v); } });
+    await fc.startNotifications();
+  } catch (e) { /* no curve (PM5v1 never sends it), the game still runs */ }
+}
+
+// Watts per stroke (Additional Stroke Data, bytes 3-4) and the force curve
+// (glued together from its pieces). Shared by connect() and replay().
+function powerEvents(handlers) {
+  return {
+    watts: function (v) { if (handlers.onStrokePower && v.byteLength >= 5) handlers.onStrokePower(u16(v, 3)); },
+    curve: createForceCurveAssembler(function (points) { if (handlers.onForceCurve) handlers.onForceCurve(points); })
+  };
 }
 
 // Stroke Data arrives twice per stroke: at the finish the stroke count goes up,
@@ -101,7 +126,7 @@ function strokeEvents(handlers) {
 // ---- Replay ----
 // Plays a recording saved by lab.html as if a PM5 were sending it live, so the
 // game can be tested without rowing, in any browser. It uses the same callback
-// as connect(): onStrokeRate(n), and onCatch() and onFinish(). It loops at the end, so a 5 minute recording
+// as connect(): onStrokeRate(n), onCatch(), onFinish(), onStrokePower(w) and onForceCurve(p). It loops at the end, so a 5 minute recording
 // can fill a 15 minute workout. Returns { name, stop }.
 // Throws if the file is not a recording.
 export function replay(rec, handlers) {
@@ -114,13 +139,15 @@ export function replay(rec, handlers) {
     return { ms: p.ms, stream: p.stream, v: new DataView(bytes.buffer) };
   });
   var lapMs = packets[packets.length - 1].ms + 500; // a short gap before it starts again
-  var i = 0, lap = 0, start = performance.now(), timer = 0, onStrokeData = strokeEvents(handlers);
+  var i = 0, lap = 0, start = performance.now(), timer = 0, onStrokeData = strokeEvents(handlers), power = powerEvents(handlers);
   // Waits until the next packet is due, measured from the start, so timing never drifts
   function schedule() { timer = setTimeout(play, Math.max(0, start + lap * lapMs + packets[i].ms - performance.now())); }
   function play() {
     var p = packets[i];
     if (p.stream === 'Additional Status 1' && p.v.byteLength > 5) handlers.onStrokeRate(p.v.getUint8(5));
     if (p.stream === 'Stroke Data') onStrokeData(p.v);
+    if (p.stream === 'Additional Stroke Data') power.watts(p.v);
+    if (p.stream === 'Force Curve') power.curve(p.v);
     i++;
     if (i === packets.length) { i = 0; lap++; }
     schedule();

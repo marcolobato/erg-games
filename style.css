@@ -123,6 +123,17 @@ select { font: inherit; background: var(--bg); color: var(--ink); border: 2px so
 .big small { font-size: 16px; font-weight: 500; color: var(--ink-soft); }
 .delta { font-family: var(--font-display); font-weight: 700; font-size: 22px; min-height: 1.3em; }
 .delta.hit { color: var(--hit); }
+/* The last stroke's power: watts on the right, and its curve underneath, tall enough to read from the seat */
+.power { display: flex; flex-direction: column; gap: 6px; }
+.power[hidden] { display: none; }
+.power-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.watts { font-family: var(--font-display); font-weight: 700; font-size: 22px; font-variant-numeric: tabular-nums; }
+.watts.low { color: var(--miss); } /* under the minimum; the words "push +17" say it too */
+.curve-wrap { height: 96px; border: 2px solid var(--line); border-radius: 4px; background: var(--bg); }
+#curve { display: block; width: 100%; height: 100%; }
+/* With the power strip showing, the board shrinks so everything fits on one phone screen
+   (no scrolling mid-row). 475 px is the rest of the rowing view. Tall screens keep the full board. */
+#game:has(#power:not([hidden])) .board-wrap { width: min(100%, max(240px, calc(100dvh - 475px))); align-self: center; }
 .practice { display: flex; gap: 10px; align-items: center; }
 .practice[hidden] { display: none; }
 .practice .btn { flex: 1; }
