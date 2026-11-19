@@ -329,6 +329,7 @@ import * as pm5 from './pm5.js';
         setText($('live-n'), String(spm));
       },
       onCatch: onCatch,
+      onFinish: onStroke,
       onStrokePower: onStrokePower,
       onForceCurve: onForceCurve,
       onDisconnect: onDrop
@@ -378,6 +379,7 @@ import * as pm5 from './pm5.js';
       replaying = pm5.replay(rec, {
         onStrokeRate: function (n) { spm = n; setText($('live-n'), String(n)); },
         onCatch: onCatch,
+        onFinish: onStroke,
         onStrokePower: onStrokePower,
         onForceCurve: onForceCurve
       });
@@ -775,7 +777,18 @@ import * as pm5 from './pm5.js';
   // The PM5 reports each catch, so we can check whether you pushed on the click.
   // Each catch is measured from the nearest click: negative = before it, positive = after.
   // The number includes a small Bluetooth delay before the PM5's message arrives.
+  // ---- Auto-pause ----
+  // With a PM5 or a replay, stopping rowing pauses the workout, and the next stroke carries on.
+  // The PM5 reports every finish (and most catches), so 6 s with neither means you have stopped.
+  var IDLE = 6, lastStrokeAt = 0, autoPaused = false;
+  function onStroke() {
+    lastStrokeAt = performance.now();
+    // Only a pause the game made itself resumes on a stroke. Not while the page is hidden.
+    if (running && paused && autoPaused && !counting && !linkLost && !document.hidden) resume(true);
+  }
+
   function onCatch() {
+    onStroke();
     if (!running || paused || counting || $('metro').value === 'off' || !beats.length) return;
     var el = (performance.now() - t0) / 1000, off = null;
     beats.forEach(function (b) { if (off === null || Math.abs(el - b) < Math.abs(off)) off = el - b; });
@@ -797,6 +810,7 @@ import * as pm5 from './pm5.js';
     if (!running || paused) return;
     var el = (now - t0) / 1000;
     if (el >= total) { finish(); return; }
+    if (mode !== 'practice' && now - lastStrokeAt > IDLE * 1000) { pause(true); return; } // stopped rowing
     var i = 0;
     while (i < timeline.length - 1 && el >= timeline[i].start + timeline[i].len) i++;
     var p = timeline[i], inPhase = el - p.start;
@@ -904,6 +918,7 @@ import * as pm5 from './pm5.js';
     lock();
     running = true;
     t0 = performance.now();
+    lastStrokeAt = t0; // 6 s to get on the handle before auto-pause
     if (from) {
       // Set the clock as if the saved time has already passed, then wait in
       // the pause menu so you resume when you are on the handle
@@ -943,7 +958,8 @@ import * as pm5 from './pm5.js';
     $('btn-skip').hidden = (p.kind !== 'warm');
     $('btn-restart').hidden = (p.kind !== 'row'); // only scored steps can be restarted
     // Without the PM5 you can only reconnect or end the workout
-    $('menu-msg').hidden = !linkLost;
+    $('menu-msg').hidden = !linkLost && !autoPaused;
+    if (autoPaused) setText($('menu-msg'), 'Paused: no strokes for ' + IDLE + ' s. Start rowing to carry on.');
     $('btn-reconnect').hidden = !linkLost;
     $('btn-resume').hidden = linkLost;
     $('btn-pick').hidden = true; // only shown after a reconnect fails
@@ -959,18 +975,21 @@ import * as pm5 from './pm5.js';
     showMenu(true);
     $(linkLost ? 'btn-reconnect' : 'btn-resume').focus(); // so Space or Enter does the main thing
   }
-  function pause() {
-    paused = true;
+  // auto: the game paused itself because the strokes stopped
+  function pause(auto) {
+    paused = true; autoPaused = !!auto;
+    if (auto) beep(392, 0.2, 0.12); // one low note, so you hear that it stopped
     pausedAt = performance.now();
     cancelAnimationFrame(rafId); // the clock, darts and beeps all stop. The screen stays awake.
     saveProgress((pausedAt - t0) / 1000);
     openMenu();
   }
-  // Counts 3-2-1 with beeps, then the clock moves on from where it stopped
-  function resume() {
-    counting = true;
+  // Counts 3-2-1 with beeps, then the clock moves on from where it stopped.
+  // now: no count-in, for a stroke after an auto-pause (the stroke is the count)
+  function resume(now) {
+    counting = true; autoPaused = false;
     showMenu(false); // the corner button shows Pause again, and can stop the countdown
-    var n = 3;
+    var n = now ? 0 : 3;
     (function tick() {
       if (n > 0) {
         setText($('phase-label'), String(n));
@@ -987,6 +1006,7 @@ import * as pm5 from './pm5.js';
       beatAt = (performance.now() - t0) / 1000;                 // the first click comes right after the count-in
       nextChime = null; counts = []; beats = [];              // a restart or skip may have moved the clock
       lastPhase = -1;                                           // shows the step label again
+      lastStrokeAt = performance.now();                         // 6 s to take a stroke before auto-pause
       rafId = requestAnimationFrame(frame);
     })();
   }
@@ -1101,7 +1121,7 @@ import * as pm5 from './pm5.js';
   // Wrapped, so the click event is not passed in as saved progress
   $('btn-start').addEventListener('click', function () { start(); });
   $('btn-pause').addEventListener('click', togglePause);
-  $('btn-resume').addEventListener('click', resume);
+  $('btn-resume').addEventListener('click', function () { resume(); }); // wrapped, so the click is not read as "now"
   // Reach the same PM5 again, with no device picker
   $('btn-reconnect').addEventListener('click', async function () {
     var btn = this;
