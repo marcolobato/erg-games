@@ -139,3 +139,39 @@ select { font: inherit; background: var(--bg); color: var(--ink); border: 2px so
 .practice .btn { flex: 1; }
 .practice span { flex: 2; text-align: center; font-size: 12px; color: var(--ink-soft); }
 .results-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
+
+/* ---- Landscape (a phone on its side, or a laptop) ----
+   The board fills the left side at full height, and everything else stacks on the right, so
+   nothing scrolls while rowing. While paused, the buttons take the board's place and the
+   settings sit on the right. Only the rowing view changes; the start and results screens stay
+   one narrow column. The :not([hidden]) parts keep these rules from showing hidden screens. */
+@media (orientation: landscape) and (min-width: 640px) {
+  body:has(#game:not([hidden])) { padding-block: 8px; }
+  .wrap:has(#game:not([hidden])) { max-width: 1200px; }
+  #game:not([hidden]) {
+    /* The board is as tall as the screen allows. 44 px = page and panel padding plus borders.
+       It stops at 58% of the width, so the numbers keep room, and at 760 px on big screens. */
+    --board: min(calc(100dvh - 44px), 58vw, 760px);
+    min-height: min(calc(100dvh - 16px), 804px); padding: 12px; /* can grow, so a tall pause menu scrolls instead of spilling out */
+    display: grid; grid-template-columns: var(--board) 1fr;
+    grid-template-rows: repeat(9, auto) 1fr; /* rows for the right column; the last one takes what is left */
+    column-gap: 20px; row-gap: 0;
+  }
+  /* The rowing view's box steps aside, so its board and numbers can go in different columns */
+  #playing:not([hidden]) { display: contents; }
+  #game > *, #playing > * { grid-column: 2; margin-bottom: 12px; }
+  #game .board-wrap, #game:has(#power:not([hidden])) .board-wrap, #game > #menu {
+    grid-column: 1; grid-row: 1 / -1; width: 100%; align-self: start; margin: 0;
+  }
+  #game .menu .btn { min-height: 56px; } /* still a big target, and 4 buttons fit the phone's height */
+  #game .menu .group { margin-top: 0; }
+  /* The settings read as one list: no "Power" / "Sound" headings, the rows name themselves */
+  #menu-settings { gap: 8px; }
+  #menu-settings .group > .label { display: none; }
+  .curve-wrap { height: 64px; } /* Pyramid Darts' power strip, shorter so it fits on the right */
+}
+/* A phone on its side is short, so drop what is not needed mid-row: the connection note and the
+   practice hint text (the − / + buttons stay) */
+@media (orientation: landscape) and (min-width: 640px) and (max-height: 500px) {
+  #game #link, #game .practice span { display: none; }
+}
