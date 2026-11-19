@@ -153,13 +153,17 @@ select { font: inherit; background: var(--bg); color: var(--ink); border: 2px so
        It stops at 58% of the width, so the numbers keep room, and at 760 px on big screens. */
     --board: min(calc(100dvh - 44px), 58vw, 760px);
     min-height: min(calc(100dvh - 16px), 804px); padding: 12px; /* can grow, so a tall pause menu scrolls instead of spilling out */
-    display: grid; grid-template-columns: var(--board) 1fr;
+    /* The right column keeps at least 240 px: if space is tight (a phone with a notch on each
+       side), the board gives up a little rather than the numbers running into each other */
+    display: grid; grid-template-columns: minmax(0, var(--board)) minmax(240px, 1fr);
     grid-template-rows: repeat(9, auto) 1fr; /* rows for the right column; the last one takes what is left */
     column-gap: 20px; row-gap: 0;
   }
   /* The rowing view's box steps aside, so its board and numbers can go in different columns */
   #playing:not([hidden]) { display: contents; }
-  #game > *, #playing > * { grid-column: 2; margin-bottom: 12px; }
+  /* min-width: 0 lets each item get narrower than its longest line, so text wraps inside the
+     column instead of pushing past the panel's edge */
+  #game > *, #playing > * { grid-column: 2; margin-bottom: 12px; min-width: 0; }
   #game .board-wrap, #game:has(#power:not([hidden])) .board-wrap, #game > #menu {
     grid-column: 1; grid-row: 1 / -1; width: 100%; align-self: start; margin: 0;
   }
@@ -174,4 +178,18 @@ select { font: inherit; background: var(--bg); color: var(--ink); border: 2px so
    practice hint text (the − / + buttons stay) */
 @media (orientation: landscape) and (min-width: 640px) and (max-height: 500px) {
   #game #link, #game .practice span { display: none; }
+  /* The right column is narrow here, so the top row wraps instead of squeezing: the pause button
+     gets the whole first row (a wide target, easy to hit from the seat) and the three numbers
+     share the row under it */
+  #game .hud { grid-template-columns: repeat(3, 1fr); row-gap: 10px; }
+  #game .hud .btn.icon { grid-column: 1 / -1; grid-row: 1; width: 100%; height: 48px; }
+  #game .hud .value { font-size: 28px; }
+  /* Tighter spacing, and "spm" sits under its number, so Target / You fit side by side */
+  #game > *, #playing > * { margin-bottom: 8px; }
+  #game .big { font-size: 56px; }
+  #game .big small { display: block; line-height: 1.3; }
+  /* Paused: Resume is the big button on the left, so the corner button steps aside, and the
+     settings get the wider column so values like "Countdown + catch" fit */
+  #game:has(#menu:not([hidden])) .hud .btn.icon { display: none; }
+  #game:not([hidden]):has(#menu:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
 }
