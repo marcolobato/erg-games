@@ -550,8 +550,9 @@ import * as pm5 from './pm5.js';
     ctx.lineWidth = 3; ctx.strokeStyle = C.ink;
     [[3.5, 0.55], [2.5, 0.7], [1.5, 0.85], [0.5, 1]].forEach(function (b) { ctx.globalAlpha = b[1] * dim; ring(b[0]); ctx.stroke(); });
     ctx.globalAlpha = 1; ctx.fillStyle = C['ink-soft']; ctx.textAlign = 'center';
-    ctx.font = "500 12px 'IBM Plex Mono', monospace";
-    ctx.fillText('▲ TOO FAST', cx, 50);
+    // Text sizes are on the 400 grid; a phone board is about 320 px, so 16 shows as about 13 px
+    ctx.font = "500 16px 'IBM Plex Mono', monospace";
+    ctx.fillText('▲ TOO FAST', cx, 52);
     ctx.fillText('▼ TOO SLOW', cx, 272);
 
     if (resting) {
@@ -561,8 +562,8 @@ import * as pm5 from './pm5.js';
       ctx.fillStyle = C.ink;
       ctx.font = "700 30px 'JetBrains Mono', monospace"; ctx.fillText(title, cx, cy - 10);
       ctx.font = "700 26px 'JetBrains Mono', monospace"; ctx.fillText(spm + ' spm', cx, cy + 22);
-      ctx.fillStyle = C['ink-soft']; ctx.font = "500 12px 'IBM Plex Mono', monospace";
-      if (until) ctx.fillText(until + fmt(Math.ceil(p.len - inPhase)), cx, cy + 46);
+      ctx.fillStyle = C['ink-soft']; ctx.font = "500 16px 'IBM Plex Mono', monospace";
+      if (until) ctx.fillText(until + fmt(Math.ceil(p.len - inPhase)), cx, cy + 50);
     } else {
       // Each stone flies from your hand toward where the rate aimed it. at(s) is the point
       // a share s of the way there. A short throw skips twice, then sinks.
@@ -613,29 +614,35 @@ import * as pm5 from './pm5.js';
         }
       });
 
-      // crosshair: a ring with a full cross, where the rate is aiming now
+      // crosshair: a ring with a full cross, where the rate is aiming now.
+      // Drawn twice: wide in the background color first, then ink on top, so the
+      // outline cuts it out from any stones underneath.
       var target = Math.max(-3.8, Math.min(3.8, spm - p.spm));
       aimErr += (target - aimErr) * EASE;
       var ay = cy - aimErr * u * k;
-      ctx.globalAlpha = 1; ctx.strokeStyle = C.ink; ctx.lineWidth = 3;
-      ctx.setLineDash(waiting ? [4, 4] : []); // dashed while stones are on hold
-      ctx.beginPath(); ctx.arc(cx, ay, 11, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.beginPath(); ctx.moveTo(cx - 34, ay); ctx.lineTo(cx + 34, ay); ctx.moveTo(cx, ay - 24); ctx.lineTo(cx, ay + 24); ctx.stroke();
+      [[C.bg, 9], [C.ink, 3]].forEach(function (s) {
+        ctx.globalAlpha = 1; ctx.strokeStyle = s[0]; ctx.lineWidth = s[1]; ctx.lineCap = 'round';
+        ctx.setLineDash(waiting ? [4, 4] : []); // dashed while stones are on hold
+        ctx.beginPath(); ctx.arc(cx, ay, 11, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(cx - 34, ay); ctx.lineTo(cx + 34, ay); ctx.moveTo(cx, ay - 24); ctx.lineTo(cx, ay + 24); ctx.stroke();
+      });
     }
 
     // power: one bar per stroke, a dashed line at the minimum, and a dashed bar to aim the next stroke at
-    var floor = floorFor(p), base = 392, ppw = 80 / 190;
+    // The bars top out at 318, under the header text, so a big stroke never runs into it
+    var floor = floorFor(p), base = 392, ppw = 74 / 190;
     function wy(w) { return base - Math.min(w, 190) * ppw; }
     ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.fillStyle = C['ink-soft'];
-    ctx.font = "500 12px 'IBM Plex Mono', monospace";
-    ctx.fillText('POWER · W', 12, 302);
+    ctx.font = "500 16px 'IBM Plex Mono', monospace";
+    ctx.fillText('POWER · W', 12, 309);
     ctx.textAlign = 'right';
-    if (lastW === null) ctx.fillText(mode === 'practice' ? 'Power needs a PM5' : 'Waiting for a stroke', 390, 302);
+    if (lastW === null) ctx.fillText(mode === 'practice' ? 'Power needs a PM5' : 'Waiting for a stroke', 390, 309);
     else {
+      // the one line to read mid-stroke, so it is the biggest text on the board
       var low = floor > 0 && lastW < floor;
-      ctx.fillStyle = low ? C.miss : floor ? C.hit : C.ink; ctx.font = "700 16px 'JetBrains Mono', monospace";
-      ctx.fillText(low ? 'PUSH +' + (floor - lastW) + ' W' : floor ? 'NEXT ≥ ' + floor + ' W' : lastW + ' W', 390, 302);
+      ctx.fillStyle = low ? C.miss : floor ? C.hit : C.ink; ctx.font = "700 26px 'JetBrains Mono', monospace";
+      ctx.fillText(low ? 'PUSH +' + (floor - lastW) + ' W' : floor ? 'MIN ' + floor + ' W' : lastW + ' W', 390, 309);
     }
     var bw = 26, gap = 10, x0 = 61;
     powerLog.forEach(function (w, i) {
