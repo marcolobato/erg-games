@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Pyramid Darts</title>
+<title>Skipping Stones</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -12,8 +12,8 @@
 <body>
 <main class="wrap">
   <header id="top">
-    <h1>Pyramid Darts</h1>
-    <p class="lede">Hold each stroke rate and your darts land on the bull.</p>
+    <h1>Skipping Stones</h1>
+    <p class="lede">Your stroke rate aims and your power throws. Hold the rate and pull hard enough, and your stones skip into the target.</p>
   </header>
 
   <!-- SETUP -->
@@ -34,8 +34,8 @@
       <!-- Two boards on the same rules: the rate aims. Skipping Stones adds power: a weak stroke sinks the stone short. -->
       <label class="setting" for="game-pick">Game
         <select id="game-pick">
-          <option value="darts" selected>Pyramid Darts</option>
-          <option value="stones">Skipping Stones (new)</option>
+          <option value="stones" selected>Skipping Stones</option>
+          <option value="darts">Pyramid Darts</option>
         </select>
       </label>
       <!-- The power minimum. Easy suits a first try; Medium and Hard ask for more watts. -->
@@ -97,7 +97,7 @@
     </div>
     <!-- What you see while rowing. Hidden while paused. -->
     <div class="stack" id="playing">
-      <div class="board-wrap"><canvas id="board" role="img" aria-label="Dart board. Your stroke rate moves the crosshair up when you are too fast and down when you are too slow."></canvas></div>
+      <div class="board-wrap"><canvas id="board" role="img" aria-label="Target board. Your stroke rate moves the crosshair up when you are too fast and down when you are too slow."></canvas></div>
       <div class="readout">
         <div><div class="label">Target</div><div class="big"><span id="r-target">–</span> <small>spm</small></div></div>
         <div><div class="label">You</div><div class="big"><span id="r-you">0</span> <small>spm</small></div></div>
@@ -195,20 +195,20 @@ import * as pm5 from './pm5.js';
     w1s2: {
       eyebrow: 'Week 1 · Session 2',
       plan: [
-        ['3 min', 'Warm up. Row easy, no darts.'],
+        ['3 min', 'Warm up. Row easy, nothing scored.'],
         ['2 min', '22 spm'], ['2 min', '24 spm'],
         ['', 'Six steps in a row, starting at 22 and alternating. No rest. 15 min total.'],
-        ['Score', 'A dart every 2 sec. Exact rate = 10, off by 1 = 5, off by 2 = 2. Darts start 4 sec into each step.']
+        ['Score', 'A throw every 2 sec. Exact rate = 10, off by 1 = 5, off by 2 = 2. Throws start 4 sec into each step.']
       ]
     },
     w1s1: {
       eyebrow: 'Week 1 · Session 1',
       plan: [
-        ['90 sec', 'Warm up. Row easy, no darts.'],
+        ['90 sec', 'Warm up. Row easy, nothing scored.'],
         ['90 sec', '24 spm'], ['60 sec', '26 spm'], ['30 sec', '28 spm'],
-        ['30 sec', 'Paddle at about 20 spm after every step. No darts.'],
+        ['30 sec', 'Paddle at about 20 spm after every step. Nothing scored.'],
         ['', 'Three pyramids, then a 30 sec cooldown. 15 min total.'],
-        ['Score', 'A dart every 2 sec. Exact rate = 10, off by 1 = 5, off by 2 = 2. Darts start 4 sec into each step.']
+        ['Score', 'A throw every 2 sec. Exact rate = 10, off by 1 = 5, off by 2 = 2. Throws start 4 sec into each step.']
       ]
     }
   };
@@ -236,7 +236,7 @@ import * as pm5 from './pm5.js';
   // ---- State ----
   var mode = null;          // 'pm5' or 'practice'
   var spm = 0;              // current stroke rate
-  var game = 'darts';       // 'darts' or 'stones', picked on the start screen
+  var game = 'stones';      // 'stones' or 'darts', picked on the start screen
   var powerLog = [], lastW = null; // watts of the last few strokes, and of the very last one
   var practiceSpm = 20;
   var running = false, rafId = 0, t0 = 0, total = 0;
@@ -675,7 +675,8 @@ import * as pm5 from './pm5.js';
     // minimum, the stone sinks short and scores nothing. No watts yet (practice mode): it always reaches.
     var floor = floorFor(p), short = game === 'stones' && lastW !== null && floor > 0 && lastW < floor;
     if (short) pts = 0;
-    var d = { ux: r * Math.cos(ang), uy: r * Math.sin(ang), pts: pts, born: now, short: short };
+    // step: which step it was thrown in, so Restart step can take this step's throws back
+    var d = { ux: r * Math.cos(ang), uy: r * Math.sin(ang), pts: pts, born: now, short: short, step: lastPhase };
     darts.push(d); popups.push(d);
     stats.score += pts; stats.darts++;
     if (a <= 1) stats.on++;
@@ -801,7 +802,7 @@ import * as pm5 from './pm5.js';
     var p = timeline[i], inPhase = el - p.start;
     if (i !== lastPhase) {
       // Only a new step gets a snapshot, not a resume in the middle of one
-      if (i !== snap.i) snap = { i: i, score: stats.score, darts: stats.darts, on: stats.on, bulls: stats.bulls, by: JSON.stringify(stats.by), drawn: darts.length };
+      if (i !== snap.i) snap = { i: i, score: stats.score, darts: stats.darts, on: stats.on, bulls: stats.bulls, by: JSON.stringify(stats.by) };
       lastPhase = i; onPhase(p, i);
     }
 
@@ -885,7 +886,10 @@ import * as pm5 from './pm5.js';
     total = acc;
     stats = from ? from.stats : { score: 0, darts: 0, on: 0, bulls: 0, by: by };
     stats.timing = stats.timing || []; // saved progress from before this feature has none
-    darts = []; popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0; nextChime = null; counts = []; beats = [];
+    // After a reload, the last stones come back, landed. Their throw times came from the old page's
+    // clock, so they are set to "long ago": no flight, no points popup.
+    darts = from && from.darts ? from.darts.map(function (d) { d.born = -Infinity; return d; }) : [];
+    popups = []; aimErr = 0; lastPhase = -1; lastSec = -1; beatAt = 0; nextChime = null; counts = []; beats = [];
     paused = false; counting = false; settleUntil = 0; snap = from ? from.snap : { i: -1 };
     showMenu(false);
     if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
@@ -1018,7 +1022,7 @@ import * as pm5 from './pm5.js';
     var ul = $('f-by'); ul.innerHTML = '';
     Object.keys(stats.by).map(Number).sort(function (a, b) { return a - b; }).forEach(function (r) {
       var b = stats.by[r], li = document.createElement('li');
-      li.textContent = r + ' spm: ' + (b.n ? Math.round(b.on / b.n * 100) + '% on target' : 'no darts') + ' (' + b.n + ' darts)';
+      li.textContent = r + ' spm: ' + (b.n ? Math.round(b.on / b.n * 100) + '% on target' : 'no throws') + ' (' + b.n + ' throws)';
       ul.appendChild(li);
     });
     var tt = timingText();
@@ -1071,11 +1075,12 @@ import * as pm5 from './pm5.js';
   var MAX_AGE = 12 * 60 * 60 * 1000; // older than 12 hours is not the same session
   var saved = null;
   function saveProgress(el) {
-    try { localStorage.setItem(SESSION_KEY, JSON.stringify({ workout: wkey, elapsed: el, stats: stats, snap: snap, savedAt: Date.now() })); } catch (e) { }
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify({ workout: wkey, elapsed: el, stats: stats, snap: snap, darts: darts.slice(-12), savedAt: Date.now() })); } catch (e) { }
   }
   function clearProgress() {
     saved = null;
     $('resume-box').hidden = true;
+    $('btn-start').textContent = 'Start workout'; $('btn-start').classList.add('primary');
     try { localStorage.removeItem(SESSION_KEY); } catch (e) { }
   }
   try {
@@ -1087,6 +1092,8 @@ import * as pm5 from './pm5.js';
     $('resume-text').textContent = 'Unfinished workout: ' + INFO[saved.workout].eyebrow + ', stopped at ' + at + '.';
     $('btn-continue').textContent = 'Resume at ' + at;
     $('resume-box').hidden = false;
+    // Starting fresh throws the saved workout away, so it is not the filled, first-choice button
+    $('btn-start').textContent = 'Start over'; $('btn-start').classList.remove('primary');
   }
   $('btn-continue').addEventListener('click', function () { if (saved) start(saved); });
   $('btn-discard').addEventListener('click', clearProgress);
@@ -1136,7 +1143,7 @@ import * as pm5 from './pm5.js';
     var p = timeline[snap.i];
     stats.score = snap.score; stats.darts = snap.darts; stats.on = snap.on; stats.bulls = snap.bulls;
     stats.by = JSON.parse(snap.by);
-    darts.length = snap.drawn; popups = [];
+    darts = darts.filter(function (d) { return d.step !== snap.i; }); popups = [];
     p.thrown = -1;
     t0 = pausedAt - p.start * 1000;
     setText($('h-score'), String(stats.score));
